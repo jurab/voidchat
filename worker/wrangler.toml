@@ -1,0 +1,13 @@
+name = "voice-roulette-signaling"
+main = "src/index.ts"
+compatibility_date = "2024-12-18"
+
+# Durable Objects binding
+[[durable_objects.bindings]]
+name = "MATCHMAKER"
+class_name = "Matchmaker"
+
+# Durable Objects migrations (SQLite-backed for free tier)
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Matchmaker"]

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>void</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Initial state: need user gesture for mic permission -->
+  <button id="start-btn">enter the void</button>
+
+  <!-- Main UI: shown after mic permission granted -->
+  <div id="main-ui" class="hidden">
+    <div id="visualizer"></div>
+    <div id="status">connecting...</div>
+    <button id="next-btn" disabled>next</button>
+    <div id="online-count"></div>
+  </div>
+
+  <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
