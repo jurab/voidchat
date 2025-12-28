@@ -589,30 +589,40 @@ function visualize() {
     }
     const highAverage = highSum / (highEnd - highStart);
 
-    // Volume creates expansion
-    const normalizedVolume = Math.min(lowAverage / 180, 1);
-    const scale = 1 + normalizedVolume * 0.5;
+    // Volume creates expansion - more dramatic
+    const normalizedVolume = Math.min(lowAverage / 140, 1);
+    const scale = 1 + normalizedVolume * 0.6;
 
     // High frequencies create faster turbulence (ripples)
-    const highFreqIntensity = Math.min(highAverage / 100, 1);
-    const baseFreq = 0.01 + highFreqIntensity * 0.03;
+    const highFreqIntensity = Math.min(highAverage / 80, 1);
+    const baseFreq = 0.012 + highFreqIntensity * 0.05 + normalizedVolume * 0.02;
     
-    // Animate turbulence phase for liquid movement
-    turbulencePhase += 0.005 + normalizedVolume * 0.02;
+    // Animate turbulence phase for liquid movement - faster and more reactive
+    turbulencePhase += 0.008 + normalizedVolume * 0.04 + highFreqIntensity * 0.02;
     
-    // Displacement amount based on volume
-    const displacementScale = normalizedVolume * 25 + highFreqIntensity * 15;
+    // Displacement amount based on volume - significantly increased
+    const displacementScale = normalizedVolume * 50 + highFreqIntensity * 25;
 
     // Update SVG filter
     if (turbulence && displacement) {
-      turbulence.setAttribute('baseFrequency', `${baseFreq} ${baseFreq * 1.2}`);
-      turbulence.setAttribute('seed', Math.floor(turbulencePhase * 10) % 100);
+      turbulence.setAttribute('baseFrequency', `${baseFreq} ${baseFreq * 1.3}`);
+      turbulence.setAttribute('seed', Math.floor(turbulencePhase * 15) % 100);
       displacement.setAttribute('scale', displacementScale);
     }
 
     visualizer.style.transform = `scale(${scale})`;
 
-    // Glow when speaking
+    // Dynamic underglow based on volume
+    const glowIntensity = normalizedVolume * 0.25 + highFreqIntensity * 0.1;
+    const glowSpread = 80 + normalizedVolume * 60;
+    const glowSpreadOuter = 120 + normalizedVolume * 80;
+    visualizer.style.boxShadow = `
+      0 0 ${glowSpread}px rgba(255, 255, 255, ${0.08 + glowIntensity}),
+      0 0 ${glowSpreadOuter}px rgba(255, 255, 255, ${0.02 + glowIntensity * 0.4}),
+      inset 0 0 40px rgba(0, 0, 0, 0.3)
+    `;
+
+    // Active class for additional effects if needed
     if (lowAverage > 25) {
       visualizer.classList.add('active');
     } else {
@@ -723,7 +733,7 @@ function helloWiggle() {
   if (!displacement || !turbulence) return;
   
   let phase = 0;
-  const duration = 800;
+  const duration = 900;
   const startTime = Date.now();
   
   function animate() {
@@ -732,22 +742,37 @@ function helloWiggle() {
     
     if (progress >= 1) {
       displacement.setAttribute('scale', 0);
+      // Reset to base glow
+      visualizer.style.boxShadow = `
+        0 0 80px rgba(255, 255, 255, 0.15),
+        0 0 120px rgba(255, 255, 255, 0.05),
+        inset 0 0 40px rgba(0, 0, 0, 0.3)
+      `;
       return;
     }
     
     // Bell curve intensity - ramps up then down
     const intensity = Math.sin(progress * Math.PI);
-    phase += 0.1;
+    phase += 0.15;
     
-    const scale = intensity * 20;
-    const freq = 0.015 + intensity * 0.02;
+    const scale = intensity * 40;
+    const freq = 0.015 + intensity * 0.04;
     
-    turbulence.setAttribute('baseFrequency', `${freq} ${freq * 1.2}`);
-    turbulence.setAttribute('seed', Math.floor(phase * 10) % 100);
+    turbulence.setAttribute('baseFrequency', `${freq} ${freq * 1.3}`);
+    turbulence.setAttribute('seed', Math.floor(phase * 15) % 100);
     displacement.setAttribute('scale', scale);
     
-    // Also scale the sphere slightly
-    visualizer.style.transform = `scale(${1 + intensity * 0.15})`;
+    // Scale the sphere
+    visualizer.style.transform = `scale(${1 + intensity * 0.2})`;
+    
+    // Pulse the underglow
+    const glowIntensity = intensity * 0.3;
+    const glowSpread = 80 + intensity * 50;
+    visualizer.style.boxShadow = `
+      0 0 ${glowSpread}px rgba(255, 255, 255, ${0.1 + glowIntensity}),
+      0 0 ${glowSpread * 1.5}px rgba(255, 255, 255, ${0.03 + glowIntensity * 0.4}),
+      inset 0 0 40px rgba(0, 0, 0, 0.3)
+    `;
     
     requestAnimationFrame(animate);
   }
