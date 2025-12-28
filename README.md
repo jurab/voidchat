@@ -37,9 +37,11 @@ Sometimes you just want to talk to a stranger without the baggage of profiles, p
 
 - Voice-only P2P calls with TURN fallback for restrictive NATs
 - Liquid distortion visualizer — volume expands the orb, high frequencies create ripples
+- Exploding text animation on "enter the void" — letters shake, glimmer, then crumble downward
 - Click the orb to skip (tremor animation on rejection)
 - Pulsing "waiting" text while searching
 - "Hello wiggle" when connected
+- Smooth fade transitions between states
 - Rate limiting (10 connections/IP/min)
 - Auto-reconnect on disconnect
 - Mobile support
