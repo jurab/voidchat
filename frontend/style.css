@@ -69,8 +69,8 @@ body {
   text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
 }
 
-/* Hover glow only when "enter the void" is displayed (underglow state) */
-#visualizer-container:hover #visualizer.underglow {
+/* Hover glow for initial states (before entering) */
+#visualizer-container:hover #visualizer:not(.breathing):not(.breathing-subtle):not(.clickable) {
   box-shadow: 
     0 0 80px rgba(255, 255, 255, 0.15),
     0 0 120px rgba(255, 255, 255, 0.05),
