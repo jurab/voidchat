@@ -37,6 +37,7 @@ Sometimes you just want to talk to a stranger without the baggage of profiles, p
 
 - Voice-only P2P calls with TURN fallback for restrictive NATs
 - Liquid distortion visualizer — volume expands the orb, high frequencies create ripples
+- Two-step entry: mic permission first, then "enter the void"
 - Exploding text animation on "enter the void" — letters shake, glimmer, then crumble downward
 - Click the orb to skip (tremor animation on rejection)
 - Pulsing "waiting" text while searching
