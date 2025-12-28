@@ -9,6 +9,29 @@ const ICE_SERVERS = [
   { urls: 'stun:stun2.l.google.com:19302' },
 ];
 
+// Debug logging - sends to server and console
+const DEBUG = true;
+function sendLogToServer(level, message) {
+  if (websocket && websocket.readyState === WebSocket.OPEN) {
+    try {
+      websocket.send(JSON.stringify({ type: 'client_log', level, message }));
+    } catch {
+      // Ignore send failures for logs
+    }
+  }
+}
+const log = (...args) => {
+  if (!DEBUG) return;
+  const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+  console.log(`[${new Date().toISOString()}]`, ...args);
+  sendLogToServer('info', message);
+};
+const logError = (...args) => {
+  const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+  console.error(`[${new Date().toISOString()}]`, ...args);
+  sendLogToServer('error', message);
+};
+
 // DOM elements
 const startBtn = document.getElementById('start-btn');
 const mainUI = document.getElementById('main-ui');
@@ -31,7 +54,9 @@ let remoteAudioElement = null;
 // ============================================
 
 startBtn.addEventListener('click', async () => {
+  log('User clicked start button');
   try {
+    log('Requesting microphone access...');
     localStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
@@ -40,6 +65,7 @@ startBtn.addEventListener('click', async () => {
       },
       video: false,
     });
+    log('Microphone access granted, tracks:', localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState })));
 
     startBtn.classList.add('hidden');
     mainUI.classList.remove('hidden');
@@ -47,19 +73,23 @@ startBtn.addEventListener('click', async () => {
 
     connectSignaling();
   } catch (err) {
-    console.error('Microphone access failed:', err);
+    logError('Microphone access failed:', err);
     alert('Microphone access is required to enter the void.');
   }
 });
 
 nextBtn.addEventListener('click', () => {
+  log('User clicked next button');
   if (websocket && websocket.readyState === WebSocket.OPEN) {
     cleanupPeerConnection();
     websocket.send(JSON.stringify({ type: 'next' }));
+    log('Sent: next');
     setStatus('finding someone...');
     nextBtn.disabled = true;
     visualizer.classList.add('breathing');
     visualizer.classList.remove('active');
+  } else {
+    log('Cannot send next - websocket not open, readyState:', websocket?.readyState);
   }
 });
 
@@ -68,49 +98,55 @@ nextBtn.addEventListener('click', () => {
 // ============================================
 
 function connectSignaling() {
+  log('Connecting to signaling server:', SIGNALING_URL);
   setStatus('connecting...');
 
   websocket = new WebSocket(SIGNALING_URL);
 
   websocket.onopen = () => {
-    console.log('Signaling connected');
+    log('WebSocket connected');
     websocket.send(JSON.stringify({ type: 'join' }));
+    log('Sent: join');
   };
 
   websocket.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
+      log('Received:', data.type, data.type === 'stats' ? `(online: ${data.online})` : JSON.stringify(data).slice(0, 100));
       handleSignalingMessage(data);
     } catch (err) {
-      console.error('Failed to parse message:', err);
+      logError('Failed to parse message:', err, event.data);
     }
   };
 
-  websocket.onclose = () => {
-    console.log('Signaling disconnected');
+  websocket.onclose = (event) => {
+    log('WebSocket closed, code:', event.code, 'reason:', event.reason, 'wasClean:', event.wasClean);
     setStatus('disconnected');
     
     // Attempt reconnect after delay
     setTimeout(() => {
       if (localStream) {
+        log('Attempting reconnect...');
         connectSignaling();
       }
     }, 2000);
   };
 
   websocket.onerror = (err) => {
-    console.error('Signaling error:', err);
+    logError('WebSocket error:', err);
   };
 }
 
 function handleSignalingMessage(data) {
   switch (data.type) {
     case 'waiting':
+      log('Now waiting for partner');
       setStatus('waiting...');
       nextBtn.disabled = true;
       break;
 
     case 'matched':
+      log('Matched with partner, initiator:', data.initiator);
       setStatus('connecting...');
       createPeerConnection();
       if (data.initiator) {
@@ -119,18 +155,22 @@ function handleSignalingMessage(data) {
       break;
 
     case 'offer':
+      log('Received offer');
       handleOffer(data.sdp);
       break;
 
     case 'answer':
+      log('Received answer');
       handleAnswer(data.sdp);
       break;
 
     case 'ice':
+      log('Received ICE candidate:', data.candidate?.candidate?.slice(0, 50));
       handleIceCandidate(data.candidate);
       break;
 
     case 'partner_left':
+      log('Partner left');
       cleanupPeerConnection();
       setStatus('they left');
       visualizer.classList.add('breathing');
@@ -139,6 +179,7 @@ function handleSignalingMessage(data) {
       setTimeout(() => {
         if (websocket && websocket.readyState === WebSocket.OPEN) {
           websocket.send(JSON.stringify({ type: 'join' }));
+          log('Sent: join (auto-rejoin after partner left)');
         }
       }, 1000);
       break;
@@ -148,7 +189,7 @@ function handleSignalingMessage(data) {
       break;
 
     case 'error':
-      console.error('Server error:', data.message);
+      logError('Server error:', data.message);
       if (data.message === 'rate_limited') {
         setStatus('slow down...');
       }
@@ -161,40 +202,66 @@ function handleSignalingMessage(data) {
 // ============================================
 
 function createPeerConnection() {
+  log('Creating RTCPeerConnection with ICE servers:', ICE_SERVERS.map(s => s.urls));
   peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
   // Add local audio track
   localStream.getTracks().forEach((track) => {
     peerConnection.addTrack(track, localStream);
+    log('Added local track:', track.kind, track.id);
   });
 
   // Handle incoming audio
   peerConnection.ontrack = (event) => {
-    console.log('Received remote track');
+    log('Received remote track:', event.track.kind, event.track.id, 'streams:', event.streams.length);
     const remoteStream = event.streams[0];
     setupRemoteAudio(remoteStream);
-    setStatus('connected', true);
-    nextBtn.disabled = false;
-    visualizer.classList.remove('breathing');
+    // Don't set connected status here - wait for ICE connection to actually establish
+    // Status will be set in onconnectionstatechange when state is 'connected'
   };
 
   // Handle ICE candidates
   peerConnection.onicecandidate = (event) => {
-    if (event.candidate && websocket.readyState === WebSocket.OPEN) {
-      websocket.send(JSON.stringify({
-        type: 'ice',
-        candidate: event.candidate.toJSON(),
-      }));
+    if (event.candidate) {
+      log('Local ICE candidate:', event.candidate.candidate.slice(0, 50));
+      if (websocket.readyState === WebSocket.OPEN) {
+        websocket.send(JSON.stringify({
+          type: 'ice',
+          candidate: event.candidate.toJSON(),
+        }));
+        log('Sent: ice');
+      } else {
+        log('Cannot send ICE - websocket not open');
+      }
+    } else {
+      log('ICE gathering complete');
     }
+  };
+
+  // ICE gathering state
+  peerConnection.onicegatheringstatechange = () => {
+    log('ICE gathering state:', peerConnection.iceGatheringState);
+  };
+
+  // ICE connection state
+  peerConnection.oniceconnectionstatechange = () => {
+    log('ICE connection state:', peerConnection.iceConnectionState);
+  };
+
+  // Signaling state
+  peerConnection.onsignalingstatechange = () => {
+    log('Signaling state:', peerConnection.signalingState);
   };
 
   // Connection state monitoring
   peerConnection.onconnectionstatechange = () => {
-    console.log('Connection state:', peerConnection.connectionState);
+    log('Connection state:', peerConnection.connectionState);
     
     switch (peerConnection.connectionState) {
       case 'connected':
         setStatus('connected', true);
+        nextBtn.disabled = false;
+        visualizer.classList.remove('breathing');
         break;
       case 'disconnected':
         setStatus('reconnecting...');
@@ -202,6 +269,7 @@ function createPeerConnection() {
       case 'failed':
         setStatus('connection failed');
         nextBtn.disabled = false;
+        visualizer.classList.add('breathing');
         break;
     }
   };
@@ -209,58 +277,79 @@ function createPeerConnection() {
 
 async function createOffer() {
   try {
+    log('Creating offer...');
     const offer = await peerConnection.createOffer();
+    log('Offer created, setting local description');
     await peerConnection.setLocalDescription(offer);
+    log('Local description set, sending offer');
     
     websocket.send(JSON.stringify({
       type: 'offer',
       sdp: peerConnection.localDescription.toJSON(),
     }));
+    log('Sent: offer');
   } catch (err) {
-    console.error('Failed to create offer:', err);
+    logError('Failed to create offer:', err);
   }
 }
 
 async function handleOffer(sdp) {
   try {
+    log('Handling offer...');
     if (!peerConnection) {
+      log('No peer connection, creating one');
       createPeerConnection();
     }
     
+    log('Setting remote description (offer)');
     await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+    log('Remote description set, creating answer');
     const answer = await peerConnection.createAnswer();
+    log('Answer created, setting local description');
     await peerConnection.setLocalDescription(answer);
+    log('Local description set, sending answer');
     
     websocket.send(JSON.stringify({
       type: 'answer',
       sdp: peerConnection.localDescription.toJSON(),
     }));
+    log('Sent: answer');
   } catch (err) {
-    console.error('Failed to handle offer:', err);
+    logError('Failed to handle offer:', err);
   }
 }
 
 async function handleAnswer(sdp) {
   try {
+    log('Handling answer...');
     if (peerConnection) {
+      log('Setting remote description (answer)');
       await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+      log('Remote description set');
+    } else {
+      log('No peer connection to set answer on');
     }
   } catch (err) {
-    console.error('Failed to handle answer:', err);
+    logError('Failed to handle answer:', err);
   }
 }
 
 async function handleIceCandidate(candidate) {
   try {
     if (peerConnection && candidate) {
+      log('Adding remote ICE candidate');
       await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      log('ICE candidate added');
+    } else {
+      log('Cannot add ICE candidate - no peer connection or null candidate');
     }
   } catch (err) {
-    console.error('Failed to add ICE candidate:', err);
+    logError('Failed to add ICE candidate:', err);
   }
 }
 
 function cleanupPeerConnection() {
+  log('Cleaning up peer connection');
   if (animationId) {
     cancelAnimationFrame(animationId);
     animationId = null;
@@ -278,12 +367,14 @@ function cleanupPeerConnection() {
   }
   
   if (peerConnection) {
+    log('Closing peer connection, state was:', peerConnection.connectionState);
     peerConnection.close();
     peerConnection = null;
   }
   
   visualizer.style.transform = 'scale(1)';
   visualizer.classList.remove('active');
+  log('Peer connection cleanup complete');
 }
 
 // ============================================
@@ -291,15 +382,40 @@ function cleanupPeerConnection() {
 // ============================================
 
 function setupRemoteAudio(stream) {
+  log('Setting up remote audio, stream tracks:', stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, muted: t.muted, readyState: t.readyState })));
+  
   // Create audio element for playback
   remoteAudioElement = new Audio();
   remoteAudioElement.srcObject = stream;
-  remoteAudioElement.play().catch((err) => {
-    console.error('Audio playback failed:', err);
-  });
+  
+  // Log audio element state
+  remoteAudioElement.onplay = () => log('Audio element: playing');
+  remoteAudioElement.onpause = () => log('Audio element: paused');
+  remoteAudioElement.onerror = (e) => logError('Audio element error:', e);
+  remoteAudioElement.onended = () => log('Audio element: ended');
+  
+  remoteAudioElement.play()
+    .then(() => {
+      log('Audio playback started successfully');
+    })
+    .catch((err) => {
+      logError('Audio playback failed:', err.name, err.message);
+    });
 
   // Create audio context for visualization
   audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  log('AudioContext state:', audioContext.state);
+  
+  // Resume audio context if suspended (mobile browsers)
+  if (audioContext.state === 'suspended') {
+    log('AudioContext suspended, attempting resume...');
+    audioContext.resume().then(() => {
+      log('AudioContext resumed, state:', audioContext.state);
+    }).catch((err) => {
+      logError('AudioContext resume failed:', err);
+    });
+  }
+  
   analyser = audioContext.createAnalyser();
   analyser.fftSize = 256;
   analyser.smoothingTimeConstant = 0.85;

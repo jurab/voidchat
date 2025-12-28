@@ -81,6 +81,45 @@ npx wrangler pages project create voidchat
 npx wrangler pages deploy . --project-name voidchat
 ```
 
+## Debugging & Logging
+
+The app has comprehensive logging for debugging connection issues.
+
+### Fetching logs
+
+All client and server logs are stored in the Durable Object's SQLite storage and can be fetched via HTTP:
+
+```bash
+# Get last 100 logs
+curl https://voice-roulette-signaling.brazdil94.workers.dev/logs
+
+# Get more logs
+curl https://voice-roulette-signaling.brazdil94.workers.dev/logs?limit=500
+
+# Filter by client ID (first 8 chars of UUID shown in logs)
+curl https://voice-roulette-signaling.brazdil94.workers.dev/logs?client=abc12345
+
+# Get logs since a timestamp
+curl https://voice-roulette-signaling.brazdil94.workers.dev/logs?since=2025-12-28T14:00:00Z
+
+# Clear all logs
+curl https://voice-roulette-signaling.brazdil94.workers.dev/logs/clear
+```
+
+### What's logged
+
+- **Server-side**: WebSocket connections/disconnections, matchmaking events, message forwarding
+- **Client-side**: All WebRTC state changes (ICE gathering, connection state, signaling state), audio setup, errors
+
+Client logs are sent to the server via WebSocket (`client_log` message type), rate-limited to 100 logs/client/minute.
+
+### Cloudflare dashboard
+
+Real-time logs are also available in Cloudflare dashboard:
+Workers & Pages → voice-roulette-signaling → Logs
+
+Persistent logging is enabled via `wrangler.toml` observability settings.
+
 ## Limitations
 
 - ~15-20% of connections may fail on restrictive NATs (no TURN server)
