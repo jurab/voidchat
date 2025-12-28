@@ -1,3 +1,17 @@
+@font-face {
+  font-family: 'Hoefler Text';
+  src: url('HoeflerTxt-Italic.otf') format('opentype');
+  font-weight: normal;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Hoefler Text';
+  src: url('HoeflerTxt-BoldIta.otf') format('opentype');
+  font-weight: bold;
+  font-style: italic;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -7,7 +21,8 @@
 body {
   background: #000;
   color: #fff;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Hoefler Text', Georgia, serif;
+  font-style: italic;
   height: 100vh;
   height: 100dvh;
   display: flex;
@@ -26,18 +41,20 @@ body {
 #start-btn {
   padding: 20px 48px;
   background: transparent;
-  border: 1px solid #333;
-  color: #666;
-  font-size: 16px;
+  border: none;
+  color: #777;
+  font-family: 'Hoefler Text', Georgia, serif;
+  font-size: 24px;
+  font-weight: bold;
+  font-style: italic;
   cursor: pointer;
-  text-transform: lowercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.05em;
   transition: all 0.3s ease;
 }
 
 #start-btn:hover {
-  border-color: #fff;
   color: #fff;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
 }
 
 /* Main UI container */
@@ -51,6 +68,16 @@ body {
   position: relative;
 }
 
+/* Visualizer container */
+#visualizer-container {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Visualizer orb */
 #visualizer {
   width: 180px;
@@ -60,8 +87,9 @@ body {
   box-shadow: 
     0 0 60px rgba(255, 255, 255, 0.03),
     inset 0 0 40px rgba(0, 0, 0, 0.5);
-  transition: transform 0.05s ease-out, box-shadow 0.1s ease-out;
-  will-change: transform, box-shadow;
+  transition: box-shadow 0.1s ease-out;
+  will-change: transform, filter;
+  filter: url(#liquid);
 }
 
 #visualizer.breathing {
@@ -75,15 +103,58 @@ body {
     inset 0 0 40px rgba(0, 0, 0, 0.3);
 }
 
+/* Sphere is clickable when connected */
+#visualizer.clickable {
+  cursor: pointer;
+  animation: breathe 4s ease-in-out infinite;
+}
+
+/* Tremor animation for rejection */
+#visualizer.tremor {
+  animation: tremor 0.6s ease-out;
+}
+
+/* Fade out and back in after rejection */
+#visualizer.fade-cycle {
+  animation: fadeCycle 1.2s ease-in-out;
+}
+
 @keyframes breathe {
   0%, 100% {
-    transform: scale(1);
-    opacity: 0.7;
+    transform: scale(0.95);
+    opacity: 0.6;
   }
   50% {
-    transform: scale(1.05);
+    transform: scale(1.1);
     opacity: 1;
   }
+}
+
+@keyframes tremor {
+  0% { transform: scale(1) translate(0, 0); }
+  5% { transform: scale(1.08) translate(-6px, 3px); }
+  10% { transform: scale(0.92) translate(8px, -4px); }
+  15% { transform: scale(1.06) translate(-5px, 6px); }
+  20% { transform: scale(0.94) translate(7px, -5px); }
+  25% { transform: scale(1.05) translate(-8px, 2px); }
+  30% { transform: scale(0.95) translate(6px, 4px); }
+  35% { transform: scale(1.04) translate(-4px, -6px); }
+  40% { transform: scale(0.96) translate(5px, 3px); }
+  45% { transform: scale(1.03) translate(-6px, -2px); }
+  50% { transform: scale(0.97) translate(4px, 5px); }
+  55% { transform: scale(1.02) translate(-3px, -4px); }
+  60% { transform: scale(0.98) translate(3px, 2px); }
+  70% { transform: scale(1.01) translate(-2px, -1px); }
+  80% { transform: scale(0.99) translate(1px, 1px); }
+  90% { transform: scale(1) translate(-1px, 0); }
+  100% { transform: scale(1) translate(0, 0); }
+}
+
+@keyframes fadeCycle {
+  0% { opacity: 1; transform: scale(1); }
+  40% { opacity: 0; transform: scale(0.7); }
+  60% { opacity: 0; transform: scale(0.7); }
+  100% { opacity: 0.6; transform: scale(0.95); }
 }
 
 /* Status text */
@@ -91,7 +162,6 @@ body {
   margin-top: 48px;
   font-size: 14px;
   color: #444;
-  text-transform: lowercase;
   letter-spacing: 0.05em;
   transition: color 0.3s ease;
 }
@@ -100,38 +170,8 @@ body {
   color: #666;
 }
 
-/* Next button */
-#next-btn {
-  margin-top: 32px;
-  padding: 12px 36px;
-  background: transparent;
-  border: 1px solid #222;
-  color: #333;
-  font-size: 14px;
-  cursor: pointer;
-  text-transform: lowercase;
-  letter-spacing: 0.05em;
-  transition: all 0.2s ease;
-}
-
-#next-btn:hover:not(:disabled) {
-  border-color: #444;
-  color: #666;
-}
-
-#next-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-/* Online count */
-#online-count {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  font-size: 12px;
-  color: #333;
-  text-transform: lowercase;
+#status.hidden {
+  opacity: 0;
 }
 
 /* Mobile adjustments */
@@ -144,15 +184,5 @@ body {
   #status {
     margin-top: 40px;
     font-size: 13px;
-  }
-  
-  #next-btn {
-    margin-top: 28px;
-    padding: 14px 40px;
-  }
-  
-  #online-count {
-    bottom: 16px;
-    right: 16px;
   }
 }

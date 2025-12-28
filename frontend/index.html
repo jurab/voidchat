@@ -10,12 +10,22 @@
   <!-- Initial state: need user gesture for mic permission -->
   <button id="start-btn">enter the void</button>
 
+  <!-- SVG filter for liquid distortion -->
+  <svg style="position: absolute; width: 0; height: 0;">
+    <defs>
+      <filter id="liquid">
+        <feTurbulence id="turbulence" type="fractalNoise" baseFrequency="0.015" numOctaves="3" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="0" xChannelSelector="R" yChannelSelector="G" id="displacement" />
+      </filter>
+    </defs>
+  </svg>
+
   <!-- Main UI: shown after mic permission granted -->
   <div id="main-ui" class="hidden">
-    <div id="visualizer"></div>
+    <div id="visualizer-container">
+      <div id="visualizer"></div>
+    </div>
     <div id="status">connecting...</div>
-    <button id="next-btn" disabled>next</button>
-    <div id="online-count"></div>
   </div>
 
   <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>

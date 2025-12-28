@@ -41,8 +41,6 @@ const startBtn = document.getElementById('start-btn');
 const mainUI = document.getElementById('main-ui');
 const visualizer = document.getElementById('visualizer');
 const status = document.getElementById('status');
-const nextBtn = document.getElementById('next-btn');
-const onlineCount = document.getElementById('online-count');
 
 // State
 let localStream = null;
@@ -92,15 +90,33 @@ startBtn.addEventListener('click', async () => {
   }
 });
 
-nextBtn.addEventListener('click', () => {
-  log('User clicked next button');
+// Click sphere to go next (only when connected)
+visualizer.addEventListener('click', () => {
+  if (!visualizer.classList.contains('clickable')) return;
+  
+  log('User clicked sphere to skip');
   if (websocket && websocket.readyState === WebSocket.OPEN) {
+    // Remove clickable state
+    visualizer.classList.remove('clickable');
+    
+    // Tremor animation - the sphere vibrates in annoyance at rejection
+    visualizer.classList.remove('tremor', 'fade-cycle', 'breathing');
+    void visualizer.offsetWidth; // Force reflow to restart animation
+    visualizer.classList.add('tremor');
+    // After tremor, fade out and back in
+    setTimeout(() => {
+      visualizer.classList.remove('tremor');
+      visualizer.classList.add('fade-cycle');
+      setTimeout(() => {
+        visualizer.classList.remove('fade-cycle');
+        visualizer.classList.add('breathing');
+      }, 1200);
+    }, 600);
+    
     cleanupPeerConnection();
     websocket.send(JSON.stringify({ type: 'next' }));
     log('Sent: next');
-    setStatus('finding someone...');
-    nextBtn.disabled = true;
-    visualizer.classList.add('breathing');
+    setStatus('');
     visualizer.classList.remove('active');
   } else {
     log('Cannot send next - websocket not open, readyState:', websocket?.readyState);
@@ -155,8 +171,8 @@ function handleSignalingMessage(data) {
   switch (data.type) {
     case 'waiting':
       log('Now waiting for partner');
-      setStatus('waiting...');
-      nextBtn.disabled = true;
+      setStatus(''); // Hide status while waiting, let breathing speak
+      visualizer.classList.remove('clickable');
       break;
 
     case 'matched':
@@ -186,9 +202,9 @@ function handleSignalingMessage(data) {
     case 'partner_left':
       log('Partner left');
       cleanupPeerConnection();
-      setStatus('they left');
+      setStatus('');
       visualizer.classList.add('breathing');
-      visualizer.classList.remove('active');
+      visualizer.classList.remove('active', 'clickable');
       // Auto-rejoin after a moment
       setTimeout(() => {
         if (websocket && websocket.readyState === WebSocket.OPEN) {
@@ -199,7 +215,7 @@ function handleSignalingMessage(data) {
       break;
 
     case 'stats':
-      updateOnlineCount(data.online);
+      // Ignore stats, we removed the online count display
       break;
 
     case 'error':
@@ -278,16 +294,17 @@ function createPeerConnection() {
     switch (peerConnection.connectionState) {
       case 'connected':
         setStatus('connected', true);
-        nextBtn.disabled = false;
         visualizer.classList.remove('breathing');
+        visualizer.classList.add('clickable');
         break;
       case 'disconnected':
         setStatus('reconnecting...');
+        visualizer.classList.remove('clickable');
         break;
       case 'failed':
         setStatus('connection failed');
-        nextBtn.disabled = false;
         visualizer.classList.add('breathing');
+        visualizer.classList.remove('clickable');
         break;
     }
   };
@@ -448,6 +465,9 @@ function visualize() {
   if (!analyser) return;
 
   const dataArray = new Uint8Array(analyser.frequencyBinCount);
+  const displacement = document.getElementById('displacement');
+  const turbulence = document.getElementById('turbulence');
+  let turbulencePhase = 0;
 
   function draw() {
     if (!analyser) return;
@@ -457,22 +477,48 @@ function visualize() {
     analyser.getByteFrequencyData(dataArray);
 
     // Calculate average volume (focus on voice frequencies 85-255 Hz range, bins ~3-10)
-    let sum = 0;
+    let lowSum = 0;
     const voiceStart = 3;
     const voiceEnd = 20;
     for (let i = voiceStart; i < voiceEnd; i++) {
-      sum += dataArray[i];
+      lowSum += dataArray[i];
     }
-    const average = sum / (voiceEnd - voiceStart);
+    const lowAverage = lowSum / (voiceEnd - voiceStart);
 
-    // Map to scale (1.0 to 1.6)
-    const normalizedVolume = Math.min(average / 180, 1);
-    const scale = 1 + normalizedVolume * 0.6;
+    // Calculate high frequency energy (for ripples - whispers, sibilants)
+    let highSum = 0;
+    const highStart = 40;
+    const highEnd = 80;
+    for (let i = highStart; i < highEnd; i++) {
+      highSum += dataArray[i];
+    }
+    const highAverage = highSum / (highEnd - highStart);
+
+    // Volume creates expansion
+    const normalizedVolume = Math.min(lowAverage / 180, 1);
+    const scale = 1 + normalizedVolume * 0.5;
+
+    // High frequencies create faster turbulence (ripples)
+    const highFreqIntensity = Math.min(highAverage / 100, 1);
+    const baseFreq = 0.01 + highFreqIntensity * 0.03;
+    
+    // Animate turbulence phase for liquid movement
+    turbulencePhase += 0.005 + normalizedVolume * 0.02;
+    
+    // Displacement amount based on volume
+    const displacementScale = normalizedVolume * 25 + highFreqIntensity * 15;
+
+    // Update SVG filter
+    if (turbulence && displacement) {
+      turbulence.setAttribute('baseFrequency', `${baseFreq} ${baseFreq * 1.2}`);
+      turbulence.setAttribute('seed', Math.floor(turbulencePhase * 10) % 100);
+      displacement.setAttribute('scale', displacementScale);
+    }
 
     visualizer.style.transform = `scale(${scale})`;
 
     // Glow when speaking
-    if (average > 25) {
+    if (lowAverage > 25) {
       visualizer.classList.add('active');
     } else {
       visualizer.classList.remove('active');
@@ -489,14 +535,6 @@ function visualize() {
 function setStatus(text, isConnected = false) {
   status.textContent = text;
   status.classList.toggle('connected', isConnected);
-}
-
-function updateOnlineCount(count) {
-  if (count > 1) {
-    onlineCount.textContent = `${count} in the void`;
-  } else {
-    onlineCount.textContent = '';
-  }
 }
 
 // ============================================
