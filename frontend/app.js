@@ -103,14 +103,13 @@ visualizer.addEventListener('click', () => {
     visualizer.classList.remove('tremor', 'fade-cycle', 'breathing');
     void visualizer.offsetWidth; // Force reflow to restart animation
     visualizer.classList.add('tremor');
-    // After tremor, fade out then switch to waiting UI
+    // After tremor, fade out then add breathing (waiting UI switch handled by 'waiting' message)
     setTimeout(() => {
       visualizer.classList.remove('tremor');
       visualizer.classList.add('fade-cycle');
       setTimeout(() => {
         visualizer.classList.remove('fade-cycle');
-        mainUI.classList.add('hidden');
-        waitingUI.classList.remove('hidden');
+        visualizer.classList.add('breathing');
       }, 1200);
     }, 600);
     
@@ -170,16 +169,24 @@ function handleSignalingMessage(data) {
   switch (data.type) {
     case 'waiting':
       log('Now waiting for partner');
-      setStatus(''); // Hide status while waiting, let breathing speak
-      visualizer.classList.remove('clickable');
+      mainUI.classList.add('hidden');
+      mainUI.classList.remove('fade-in');
+      waitingUI.classList.remove('hidden');
+      visualizer.classList.remove('clickable', 'breathing', 'active');
       break;
 
     case 'matched':
       log('Matched with partner, initiator:', data.initiator);
-      waitingUI.classList.add('hidden');
-      mainUI.classList.remove('hidden');
-      visualizer.classList.add('breathing');
-      setStatus('');
+      // Fade out waiting, fade in sphere
+      waitingUI.classList.add('fade-out');
+      setTimeout(() => {
+        waitingUI.classList.add('hidden');
+        waitingUI.classList.remove('fade-out');
+        mainUI.classList.remove('hidden');
+        mainUI.classList.add('fade-in');
+        visualizer.classList.add('breathing');
+        setStatus('');
+      }, 500);
       createPeerConnection();
       if (data.initiator) {
         createOffer();
