@@ -702,12 +702,20 @@ function explodeText(element) {
     
     const clingGroup = getClingGroup(i);
     
+    // Calculate sphere arc: middle letters pushed down more (parabola)
+    // normalized position: -1 (left edge) to 1 (right edge)
+    const normalizedPos = text.length > 1 ? (i / (text.length - 1)) * 2 - 1 : 0;
+    // Parabola: 1 at center, 0 at edges
+    const sphereArc = 1 - normalizedPos * normalizedPos;
+    
     letters.push({
       el: span,
       // Position offsets
       x: 0,
       y: 0,
       rot: 0,
+      // Sphere curvature - middle letters bend down more
+      sphereArc,
       // Velocities for shake phase
       vx: 0,
       vy: 0,
@@ -759,11 +767,18 @@ function explodeText(element) {
           ? Math.sin(shakeProgress / 0.6 * Math.PI * 0.5) 
           : Math.cos((shakeProgress - 0.6) / 0.4 * Math.PI * 0.5);
         
+        // Sphere push: grows during shake, peaks at ~70%, represents sphere pushing up from below
+        const spherePush = Math.sin(Math.min(shakeProgress / 0.7, 1) * Math.PI * 0.5);
+        const sphereBend = letter.sphereArc * spherePush * 12; // max 12px bend at center
+        
         // Generate new random targets periodically
         if (Math.random() < 0.12) {
           letter.targetX = (Math.random() - 0.5) * 6 * intensity;
-          letter.targetY = (Math.random() - 0.5) * 4 * intensity;
+          letter.targetY = (Math.random() - 0.5) * 4 * intensity + sphereBend;
           letter.targetRot = (Math.random() - 0.5) * 10 * intensity;
+        } else {
+          // Always apply sphere bend even when not generating new random target
+          letter.targetY = letter.targetY * 0.9 + sphereBend * 0.1;
         }
         
         // Wind down targets as we approach end
