@@ -88,21 +88,6 @@ cd ../frontend
 npx wrangler pages deploy . --project-name voidchat
 ```
 
-## Debugging & Logging
-
-All client and server logs are stored in the Durable Object's SQLite storage:
-
-```bash
-# Get last 100 logs
-curl https://voice-roulette-signaling.brazdil94.workers.dev/logs
-
-# Filter by client ID
-curl https://voice-roulette-signaling.brazdil94.workers.dev/logs?client=abc12345
-
-# Clear all logs
-curl https://voice-roulette-signaling.brazdil94.workers.dev/logs/clear
-```
-
 ## Limitations
 
 - Single Durable Object instance (would need sharding at scale)

@@ -13,27 +13,14 @@ let iceServers = [];
 // Force TURN relay for testing (set to false for normal ICE behavior)
 const FORCE_RELAY = false;
 
-// Debug logging - sends to server and console
+// Debug logging
 const DEBUG = true;
-function sendLogToServer(level, message) {
-  if (websocket && websocket.readyState === WebSocket.OPEN) {
-    try {
-      websocket.send(JSON.stringify({ type: 'client_log', level, message }));
-    } catch {
-      // Ignore send failures for logs
-    }
-  }
-}
 const log = (...args) => {
   if (!DEBUG) return;
-  const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
   console.log(`[${new Date().toISOString()}]`, ...args);
-  sendLogToServer('info', message);
 };
 const logError = (...args) => {
-  const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
   console.error(`[${new Date().toISOString()}]`, ...args);
-  sendLogToServer('error', message);
 };
 
 // DOM elements
