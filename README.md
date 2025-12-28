@@ -46,17 +46,23 @@ Total: ~600 lines of code.
 ## Local development
 
 ```bash
-# Start the signaling server
+# Quick start (both servers)
+./dev.sh
+
+# Or manually:
+# Terminal 1: Start the signaling server
 cd worker
 npm install
 npx wrangler dev --port 8787
 
-# In another terminal, serve the frontend
+# Terminal 2: Serve the frontend
 cd frontend
 npx serve -l 5555
 ```
 
-Open two tabs at `http://localhost:5555`, click "enter the void" in both.
+Open `http://localhost:5555` and click "enter the void".
+
+**Testing note:** To test with two clients locally, use two different browsers (e.g., Chrome + Safari) or one regular + one private window. Two tabs in the same browser session may interfere with each other due to shared WebSocket/WebRTC contexts.
 
 ## Deployment
 

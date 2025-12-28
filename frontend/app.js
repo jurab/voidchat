@@ -1,5 +1,7 @@
-// Configuration - update this after deploying the worker
-const SIGNALING_URL = 'wss://voice-roulette-signaling.brazdil94.workers.dev/ws';
+// Configuration - auto-detect local vs production
+const SIGNALING_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'ws://localhost:8787/ws'
+  : 'wss://voice-roulette-signaling.brazdil94.workers.dev/ws';
 
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
