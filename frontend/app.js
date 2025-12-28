@@ -13,6 +13,9 @@ let iceServers = [];
 // Force TURN relay for testing (set to false for normal ICE behavior)
 const FORCE_RELAY = false;
 
+// Audio bitrate cap (kbps) - lower = less TURN bandwidth usage
+const AUDIO_BITRATE = 24;
+
 // Debug logging
 const DEBUG = true;
 const log = (...args) => {
@@ -387,11 +390,23 @@ function createPeerConnection() {
   };
 }
 
+// Modify SDP to cap audio bitrate
+function capAudioBitrate(sdp) {
+  // Add b=AS line after each m=audio line to cap bandwidth
+  return sdp.replace(/m=audio.*\r\n/g, (match) => {
+    return match + `b=AS:${AUDIO_BITRATE}\r\n`;
+  });
+}
+
 async function createOffer() {
   try {
     log('Creating offer...');
     const offer = await peerConnection.createOffer();
-    log('Offer created, setting local description');
+    
+    // Cap audio bitrate in SDP
+    offer.sdp = capAudioBitrate(offer.sdp);
+    log('Offer created (bitrate capped to', AUDIO_BITRATE, 'kbps), setting local description');
+    
     await peerConnection.setLocalDescription(offer);
     log('Local description set, sending offer');
     
@@ -417,7 +432,11 @@ async function handleOffer(sdp) {
     await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
     log('Remote description set, creating answer');
     const answer = await peerConnection.createAnswer();
-    log('Answer created, setting local description');
+    
+    // Cap audio bitrate in answer too
+    answer.sdp = capAudioBitrate(answer.sdp);
+    log('Answer created (bitrate capped to', AUDIO_BITRATE, 'kbps), setting local description');
+    
     await peerConnection.setLocalDescription(answer);
     log('Local description set, sending answer');
     

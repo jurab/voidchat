@@ -30,18 +30,9 @@ export default {
 
     // TURN credentials endpoint
     if (url.pathname === "/turn-credentials") {
+      // Minimal TURN config: UDP preferred, TLS/TCP fallback for strict firewalls
       const iceServers = [
         { urls: 'stun:stun.relay.metered.ca:80' },
-        { 
-          urls: 'turn:global.relay.metered.ca:80',
-          username: env.TURN_USERNAME,
-          credential: env.TURN_CREDENTIAL
-        },
-        { 
-          urls: 'turn:global.relay.metered.ca:80?transport=tcp',
-          username: env.TURN_USERNAME,
-          credential: env.TURN_CREDENTIAL
-        },
         { 
           urls: 'turn:global.relay.metered.ca:443',
           username: env.TURN_USERNAME,
