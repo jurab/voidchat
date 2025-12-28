@@ -1,13 +1,17 @@
 // Configuration - auto-detect local vs production
-const SIGNALING_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const SIGNALING_URL = isLocal
   ? 'ws://localhost:8787/ws'
   : 'wss://voice-roulette-signaling.brazdil94.workers.dev/ws';
+const CREDENTIALS_URL = isLocal
+  ? 'http://localhost:8787/turn-credentials'
+  : 'https://voice-roulette-signaling.brazdil94.workers.dev/turn-credentials';
 
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-];
+// ICE configuration - fetched from server
+let iceServers = [];
+
+// Force TURN relay for testing (set to false for normal ICE behavior)
+const FORCE_RELAY = false;
 
 // Debug logging - sends to server and console
 const DEBUG = true;
@@ -56,6 +60,16 @@ let remoteAudioElement = null;
 startBtn.addEventListener('click', async () => {
   log('User clicked start button');
   try {
+    // Fetch TURN credentials first
+    log('Fetching TURN credentials...');
+    const credResponse = await fetch(CREDENTIALS_URL);
+    if (!credResponse.ok) {
+      throw new Error('Failed to fetch TURN credentials');
+    }
+    const credData = await credResponse.json();
+    iceServers = credData.iceServers;
+    log('Got ICE servers:', iceServers.map(s => s.urls));
+    
     log('Requesting microphone access...');
     localStream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -73,8 +87,8 @@ startBtn.addEventListener('click', async () => {
 
     connectSignaling();
   } catch (err) {
-    logError('Microphone access failed:', err);
-    alert('Microphone access is required to enter the void.');
+    logError('Startup failed:', err);
+    alert('Failed to start: ' + err.message);
   }
 });
 
@@ -202,8 +216,12 @@ function handleSignalingMessage(data) {
 // ============================================
 
 function createPeerConnection() {
-  log('Creating RTCPeerConnection with ICE servers:', ICE_SERVERS.map(s => s.urls));
-  peerConnection = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const config = { 
+    iceServers,
+    iceTransportPolicy: FORCE_RELAY ? 'relay' : 'all'  // 'relay' forces TURN, 'all' tries direct first
+  };
+  log('Creating RTCPeerConnection with config:', { iceServers: iceServers.map(s => s.urls), iceTransportPolicy: config.iceTransportPolicy });
+  peerConnection = new RTCPeerConnection(config);
 
   // Add local audio track
   localStream.getTracks().forEach((track) => {

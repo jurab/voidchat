@@ -1,5 +1,7 @@
 export interface Env {
   MATCHMAKER: DurableObjectNamespace;
+  TURN_USERNAME: string;
+  TURN_CREDENTIAL: string;
 }
 
 // Rate limit: max connections per IP per minute
@@ -13,13 +15,57 @@ const CLIENT_LOG_WINDOW_MS = 60_000;
 // Log storage settings
 const MAX_STORED_LOGS = 1000;
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    // Handle CORS preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
     // Health check
     if (url.pathname === "/" || url.pathname === "/health") {
       return new Response("Voice Roulette Signaling Server", { status: 200 });
+    }
+
+    // TURN credentials endpoint
+    if (url.pathname === "/turn-credentials") {
+      const iceServers = [
+        { urls: 'stun:stun.relay.metered.ca:80' },
+        { 
+          urls: 'turn:global.relay.metered.ca:80',
+          username: env.TURN_USERNAME,
+          credential: env.TURN_CREDENTIAL
+        },
+        { 
+          urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+          username: env.TURN_USERNAME,
+          credential: env.TURN_CREDENTIAL
+        },
+        { 
+          urls: 'turn:global.relay.metered.ca:443',
+          username: env.TURN_USERNAME,
+          credential: env.TURN_CREDENTIAL
+        },
+        { 
+          urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+          username: env.TURN_USERNAME,
+          credential: env.TURN_CREDENTIAL
+        },
+      ];
+      return new Response(JSON.stringify({ iceServers }), {
+        headers: { 
+          'Content-Type': 'application/json',
+          ...CORS_HEADERS
+        }
+      });
     }
 
     // WebSocket endpoint and logs endpoint go to the Matchmaker
