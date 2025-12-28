@@ -58,6 +58,11 @@ let remoteAudioElement = null;
 
 startBtn.addEventListener('click', async () => {
   log('User clicked start button');
+  
+  // Explode the button text and hide button immediately
+  explodeText(startBtn);
+  startBtn.classList.add('hidden');
+  
   try {
     // Fetch TURN credentials first
     log('Fetching TURN credentials...');
@@ -80,7 +85,6 @@ startBtn.addEventListener('click', async () => {
     });
     log('Microphone access granted, tracks:', localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState })));
 
-    startBtn.classList.add('hidden');
     waitingUI.classList.remove('hidden');
 
     connectSignaling();
@@ -546,6 +550,83 @@ function visualize() {
 function setStatus(text, isConnected = false) {
   status.textContent = text;
   status.classList.toggle('connected', isConnected);
+}
+
+// Explode text into letters - shake then crumble down
+function explodeText(element) {
+  const text = element.textContent;
+  
+  // Create container for exploding letters
+  const container = document.createElement('div');
+  container.id = 'exploding-text';
+  
+  // Split text into individual characters
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const span = document.createElement('span');
+    span.textContent = char === ' ' ? '\u00A0' : char; // Use non-breaking space for spaces
+    
+    // Shake phase - small random trembles
+    const shakeX = (Math.random() - 0.5) * 6;
+    const shakeY = (Math.random() - 0.5) * 4;
+    const shakeRot = (Math.random() - 0.5) * 8;
+    const vibrate = (Math.random() - 0.5) * 3; // Small rotational vibration
+    
+    // Crumble phase - fall downward with small horizontal drift
+    const driftX = (Math.random() - 0.5) * 30; // Reduced horizontal drift
+    const fallY = 200 + Math.random() * 150; // Fall down
+    const rot = (Math.random() - 0.5) * 180; // Tumble as they fall
+    
+    // Opacity fluctuation during shake phase
+    const shakeOp1 = 0.6 + Math.random() * 0.4;  // 0.6-1.0
+    const shakeOp2 = 0.7 + Math.random() * 0.3;  // 0.7-1.0
+    const shakeOp3 = 0.5 + Math.random() * 0.5;  // 0.5-1.0
+    const shakeOp4 = 0.65 + Math.random() * 0.35; // 0.65-1.0
+    const shakeOp5 = 0.5 + Math.random() * 0.5;  // 0.5-1.0
+    const shakeOp6 = 0.7 + Math.random() * 0.3;  // 0.7-1.0
+    const shakeOp7 = 0.55 + Math.random() * 0.45; // 0.55-1.0
+    const shakeOp8 = 0.6 + Math.random() * 0.4;  // 0.6-1.0
+    
+    // Flicker values during crumble - stronger opacity fluctuation
+    const flicker1 = 0.7 + Math.random() * 0.25; // 0.7-0.95
+    const flicker2 = 0.5 + Math.random() * 0.3;  // 0.5-0.8
+    const flicker3 = 0.3 + Math.random() * 0.25; // 0.3-0.55
+    const flicker4 = 0.1 + Math.random() * 0.2;  // 0.1-0.3
+    
+    // Stagger delay - first letters fall while last ones still shaking
+    const delay = i * 0.08; // 80ms between each letter
+    
+    span.style.setProperty('--shake-x', `${shakeX}px`);
+    span.style.setProperty('--shake-y', `${shakeY}px`);
+    span.style.setProperty('--shake-rot', `${shakeRot}deg`);
+    span.style.setProperty('--vibrate', `${vibrate}deg`);
+    span.style.setProperty('--drift-x', `${driftX}px`);
+    span.style.setProperty('--fall-y', `${fallY}px`);
+    span.style.setProperty('--rot', `${rot}deg`);
+    span.style.setProperty('--shake-op-1', shakeOp1);
+    span.style.setProperty('--shake-op-2', shakeOp2);
+    span.style.setProperty('--shake-op-3', shakeOp3);
+    span.style.setProperty('--shake-op-4', shakeOp4);
+    span.style.setProperty('--shake-op-5', shakeOp5);
+    span.style.setProperty('--shake-op-6', shakeOp6);
+    span.style.setProperty('--shake-op-7', shakeOp7);
+    span.style.setProperty('--shake-op-8', shakeOp8);
+    span.style.setProperty('--flicker-1', flicker1);
+    span.style.setProperty('--flicker-2', flicker2);
+    span.style.setProperty('--flicker-3', flicker3);
+    span.style.setProperty('--flicker-4', flicker4);
+    span.style.setProperty('--delay', `${delay}s`);
+    
+    container.appendChild(span);
+  }
+  
+  document.body.appendChild(container);
+  
+  // Remove the container after animation completes (base + max delay)
+  const totalTime = 2500 + text.length * 80;
+  setTimeout(() => {
+    container.remove();
+  }, totalTime);
 }
 
 // Hello wiggle - simulates a brief voice-like distortion

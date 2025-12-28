@@ -49,12 +49,109 @@ body {
   font-style: italic;
   cursor: pointer;
   letter-spacing: 0.05em;
+  font-kerning: none;
   transition: all 0.3s ease;
 }
 
 #start-btn:hover {
   color: #fff;
   text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+}
+
+/* Exploding text container */
+#exploding-text {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Hoefler Text', Georgia, serif;
+  font-size: 24px;
+  font-weight: bold;
+  font-style: italic;
+  letter-spacing: 0.05em;
+  font-kerning: none;
+  color: #fff;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+  z-index: 100;
+}
+
+#exploding-text span {
+  display: inline-block;
+  animation: shakeThenCrumble 2.5s ease-out forwards;
+  animation-delay: var(--delay);
+}
+
+@keyframes shakeThenCrumble {
+  /* Glimmer - bright flash at start */
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+    text-shadow: 0 0 30px rgba(255, 255, 255, 0.9), 0 0 60px rgba(255, 255, 255, 0.5);
+  }
+  4% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+    text-shadow: 0 0 40px rgba(255, 255, 255, 1), 0 0 80px rgba(255, 255, 255, 0.7);
+  }
+  8% {
+    transform: translate(calc(var(--shake-x) * 0.3), calc(var(--shake-y) * 0.3)) rotate(calc(var(--shake-rot) * 0.2 + var(--vibrate)));
+    opacity: var(--shake-op-1);
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+  }
+  16% {
+    transform: translate(calc(var(--shake-x) * -0.4), calc(var(--shake-y) * -0.3)) rotate(calc(var(--shake-rot) * -0.3 - var(--vibrate)));
+    opacity: var(--shake-op-2);
+  }
+  24% {
+    transform: translate(calc(var(--shake-x) * 0.6), calc(var(--shake-y) * 0.5)) rotate(calc(var(--shake-rot) * 0.4 + var(--vibrate) * 1.2));
+    opacity: var(--shake-op-3);
+  }
+  32% {
+    transform: translate(calc(var(--shake-x) * -0.7), calc(var(--shake-y) * -0.6)) rotate(calc(var(--shake-rot) * -0.5 - var(--vibrate) * 0.8));
+    opacity: var(--shake-op-4);
+  }
+  40% {
+    transform: translate(calc(var(--shake-x) * 0.9), calc(var(--shake-y) * 0.8)) rotate(calc(var(--shake-rot) * 0.7 + var(--vibrate) * 1.5));
+    opacity: var(--shake-op-5);
+  }
+  48% {
+    transform: translate(calc(var(--shake-x) * -1.0), calc(var(--shake-y) * -0.9)) rotate(calc(var(--shake-rot) * -0.8 - var(--vibrate) * 1.3));
+    opacity: var(--shake-op-6);
+  }
+  56% {
+    transform: translate(calc(var(--shake-x) * 1.2), var(--shake-y)) rotate(calc(var(--shake-rot) * 0.9 + var(--vibrate) * 1.8));
+    opacity: var(--shake-op-7);
+  }
+  64% {
+    transform: translate(calc(var(--shake-x) * -1.1), calc(var(--shake-y) * -1.1)) rotate(calc(var(--shake-rot) - var(--vibrate) * 1.5));
+    opacity: var(--shake-op-8);
+  }
+  /* Crumble phase - letters fall down and fade with flicker */
+  70% {
+    transform: translate(calc(var(--drift-x) * 0.1), 10px) rotate(calc(var(--rot) * 0.1));
+    opacity: 1;
+  }
+  75% {
+    transform: translate(calc(var(--drift-x) * 0.25), calc(var(--fall-y) * 0.15)) rotate(calc(var(--rot) * 0.2));
+    opacity: var(--flicker-1);
+  }
+  80% {
+    transform: translate(calc(var(--drift-x) * 0.4), calc(var(--fall-y) * 0.3)) rotate(calc(var(--rot) * 0.35));
+    opacity: var(--flicker-2);
+  }
+  85% {
+    transform: translate(calc(var(--drift-x) * 0.55), calc(var(--fall-y) * 0.45)) rotate(calc(var(--rot) * 0.5));
+    opacity: var(--flicker-3);
+  }
+  90% {
+    transform: translate(calc(var(--drift-x) * 0.7), calc(var(--fall-y) * 0.6)) rotate(calc(var(--rot) * 0.65));
+    opacity: var(--flicker-4);
+  }
+  100% {
+    transform: translate(var(--drift-x), var(--fall-y)) rotate(var(--rot));
+    opacity: 0;
+  }
 }
 
 /* Waiting UI */
