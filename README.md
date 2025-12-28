@@ -36,13 +36,15 @@ Sometimes you just want to talk to a stranger without the baggage of profiles, p
 ## Features
 
 - Voice-only P2P calls with TURN fallback for restrictive NATs
+- Sphere visible from page load — static orb with text inside
 - Liquid distortion visualizer — volume expands the orb, high frequencies create ripples
-- Two-step entry: mic permission first, then "enter the void"
-- Exploding text animation on "enter the void" — letters shake, glimmer, then crumble downward
-- Click the orb to skip (tremor animation on rejection)
-- Pulsing "waiting" text while searching
+- Two-step entry: "enable microphone" then "enter the void" (both displayed inside the sphere)
+- Click the sphere or text to interact at any step
+- Exploding text animation — letters shake, glimmer, then crumble downward
+- Two breathing modes: subtle pulsing while waiting, full breathing when connected
+- CRT turn-off effect with tremor when skipping
 - "Hello wiggle" when connected
-- Smooth fade transitions between states
+- Hover glow effect on "enter the void" state
 - Rate limiting (10 connections/IP/min)
 - Auto-reconnect on disconnect
 - Mobile support

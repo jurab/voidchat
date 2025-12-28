@@ -7,12 +7,6 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Initial state: ask for mic permission first -->
-  <button id="mic-btn">enable microphone</button>
-  
-  <!-- After mic enabled: enter button -->
-  <button id="start-btn" class="hidden">enter the void</button>
-
   <!-- SVG filter for liquid distortion -->
   <svg style="position: absolute; width: 0; height: 0;">
     <defs>
@@ -23,17 +17,17 @@
     </defs>
   </svg>
 
-  <!-- Waiting state -->
-  <div id="waiting-ui" class="hidden">
-    <div id="waiting-text">waiting</div>
-  </div>
-
-  <!-- Main UI: shown when connected -->
-  <div id="main-ui" class="hidden">
+  <!-- Single sphere UI with text inside -->
+  <div id="sphere-ui">
     <div id="visualizer-container">
       <div id="visualizer"></div>
+      <div id="sphere-text-container">
+        <button id="mic-btn">enable microphone</button>
+        <button id="start-btn" class="hidden">enter the void</button>
+        <div id="waiting-text" class="hidden">waiting</div>
+      </div>
     </div>
-    <div id="status">connecting...</div>
+    <div id="status" class="hidden">connecting...</div>
   </div>
 
   <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>

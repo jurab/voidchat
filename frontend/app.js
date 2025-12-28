@@ -39,8 +39,7 @@ const logError = (...args) => {
 // DOM elements
 const micBtn = document.getElementById('mic-btn');
 const startBtn = document.getElementById('start-btn');
-const waitingUI = document.getElementById('waiting-ui');
-const mainUI = document.getElementById('main-ui');
+const waitingText = document.getElementById('waiting-text');
 const visualizer = document.getElementById('visualizer');
 const status = document.getElementById('status');
 
@@ -57,9 +56,11 @@ let remoteAudioElement = null;
 // INITIALIZATION
 // ============================================
 
-// Step 1: Request microphone permission
-micBtn.addEventListener('click', async () => {
-  log('User clicked mic button');
+// Handle mic/enter actions (can be triggered by button or sphere click)
+async function handleMicClick() {
+  if (localStream) return; // Already have mic access
+  
+  log('User clicked to enable mic');
   
   try {
     log('Requesting microphone access...');
@@ -73,6 +74,9 @@ micBtn.addEventListener('click', async () => {
     });
     log('Microphone access granted, tracks:', localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState })));
 
+    // Add underglow to sphere (no breathing yet)
+    visualizer.classList.add('underglow');
+    
     // Fade out mic button, then show enter button
     micBtn.classList.add('fade-out');
     setTimeout(() => {
@@ -83,11 +87,16 @@ micBtn.addEventListener('click', async () => {
     logError('Microphone access failed:', err);
     alert('Microphone access is required to use voidchat');
   }
-});
+}
 
-// Step 2: Enter the void
-startBtn.addEventListener('click', async () => {
-  log('User clicked start button');
+async function handleEnterClick() {
+  if (!localStream || startBtn.classList.contains('hidden')) return; // Not ready yet
+  
+  log('User clicked to enter');
+  
+  // Start sphere breathing (subtle)
+  visualizer.classList.remove('underglow');
+  visualizer.classList.add('breathing-subtle');
   
   // Explode the button text and hide button immediately
   explodeText(startBtn);
@@ -104,14 +113,39 @@ startBtn.addEventListener('click', async () => {
     iceServers = credData.iceServers;
     log('Got ICE servers:', iceServers.map(s => s.urls));
 
-    // Delay connection until exploding animation finishes
+    // Delay showing waiting text until exploding animation finishes
     setTimeout(() => {
-      waitingUI.classList.remove('hidden');
+      waitingText.classList.remove('hidden');
+      waitingText.classList.add('pulsing');
       connectSignaling();
     }, 2400);
   } catch (err) {
     logError('Startup failed:', err);
     alert('Failed to start: ' + err.message);
+  }
+}
+
+// Step 1: Request microphone permission
+micBtn.addEventListener('click', handleMicClick);
+
+// Step 2: Enter the void
+startBtn.addEventListener('click', handleEnterClick);
+
+// Sphere click - triggers current action (mic or enter)
+visualizer.addEventListener('click', () => {
+  // If already in connected state, this is handled by the skip logic below
+  if (visualizer.classList.contains('clickable')) return;
+  
+  // If mic not enabled yet, trigger mic
+  if (!localStream) {
+    handleMicClick();
+    return;
+  }
+  
+  // If mic enabled but not entered yet, trigger enter
+  if (!startBtn.classList.contains('hidden')) {
+    handleEnterClick();
+    return;
   }
 });
 
@@ -122,7 +156,7 @@ visualizer.addEventListener('click', () => {
   log('User clicked sphere to skip');
   if (websocket && websocket.readyState === WebSocket.OPEN) {
     // Remove clickable state
-    visualizer.classList.remove('clickable', 'active', 'breathing');
+    visualizer.classList.remove('clickable', 'active');
     
     // Tremor animation
     visualizer.classList.remove('tremor', 'crt-off');
@@ -139,6 +173,12 @@ visualizer.addEventListener('click', () => {
       setTimeout(() => {
         visualizer.classList.remove('crt-off');
         cleanupPeerConnection();
+        
+        // Show waiting text, subtle breathing
+        visualizer.classList.add('breathing-subtle');
+        waitingText.classList.remove('hidden');
+        waitingText.classList.add('pulsing');
+        
         websocket.send(JSON.stringify({ type: 'next' }));
         log('Sent: next');
       }, 500);
@@ -196,29 +236,20 @@ function handleSignalingMessage(data) {
   switch (data.type) {
     case 'waiting':
       log('Now waiting for partner');
-      mainUI.classList.add('hidden');
-      mainUI.classList.remove('fade-in');
-      waitingUI.classList.remove('hidden', 'fade-out');
-      // Reset waiting text animation
-      const waitingText = document.getElementById('waiting-text');
-      waitingText.style.animation = 'none';
-      waitingText.offsetHeight; // Force reflow
-      waitingText.style.animation = '';
-      visualizer.classList.remove('clickable', 'breathing', 'active');
+      // Show waiting text, subtle breathing
+      waitingText.classList.remove('hidden');
+      waitingText.classList.add('pulsing');
+      visualizer.classList.remove('clickable', 'active', 'breathing');
+      visualizer.classList.add('breathing-subtle');
       break;
 
     case 'matched':
       log('Matched with partner, initiator:', data.initiator);
-      // Fade out waiting, fade in sphere
-      waitingUI.classList.add('fade-out');
-      setTimeout(() => {
-        waitingUI.classList.add('hidden');
-        waitingUI.classList.remove('fade-out');
-        mainUI.classList.remove('hidden');
-        mainUI.classList.add('fade-in');
-        visualizer.classList.add('breathing');
-        setStatus('');
-      }, 500);
+      // Hide waiting text, full breathing
+      waitingText.classList.add('hidden');
+      waitingText.classList.remove('pulsing');
+      visualizer.classList.remove('breathing-subtle');
+      visualizer.classList.add('breathing');
       createPeerConnection();
       if (data.initiator) {
         createOffer();
@@ -243,7 +274,7 @@ function handleSignalingMessage(data) {
     case 'partner_left':
       log('Partner left');
       // Play tremor → CRT animation, then go to waiting
-      visualizer.classList.remove('clickable', 'active', 'breathing');
+      visualizer.classList.remove('clickable', 'active');
       visualizer.classList.remove('tremor', 'crt-off');
       void visualizer.offsetWidth;
       visualizer.classList.add('tremor');
@@ -257,16 +288,10 @@ function handleSignalingMessage(data) {
           visualizer.classList.remove('crt-off');
           cleanupPeerConnection();
           
-          // Switch to waiting UI
-          mainUI.classList.add('hidden');
-          mainUI.classList.remove('fade-in');
-          waitingUI.classList.remove('hidden', 'fade-out');
-          
-          // Reset waiting text animation
-          const waitingText = document.getElementById('waiting-text');
-          waitingText.style.animation = 'none';
-          waitingText.offsetHeight;
-          waitingText.style.animation = '';
+          // Show waiting text, subtle breathing
+          visualizer.classList.add('breathing-subtle');
+          waitingText.classList.remove('hidden');
+          waitingText.classList.add('pulsing');
           
           // Auto-rejoin
           if (websocket && websocket.readyState === WebSocket.OPEN) {
@@ -605,9 +630,16 @@ function setStatus(text, isConnected = false) {
 function explodeText(element) {
   const text = element.textContent;
   
+  // Get the button's position to spawn letters there
+  const rect = element.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  
   // Create container for exploding letters
   const container = document.createElement('div');
   container.id = 'exploding-text';
+  container.style.left = `${centerX}px`;
+  container.style.top = `${centerY}px`;
   
   // Split text into individual characters
   for (let i = 0; i < text.length; i++) {
