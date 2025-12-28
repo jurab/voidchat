@@ -38,6 +38,7 @@ const logError = (...args) => {
 
 // DOM elements
 const startBtn = document.getElementById('start-btn');
+const waitingUI = document.getElementById('waiting-ui');
 const mainUI = document.getElementById('main-ui');
 const visualizer = document.getElementById('visualizer');
 const status = document.getElementById('status');
@@ -80,8 +81,7 @@ startBtn.addEventListener('click', async () => {
     log('Microphone access granted, tracks:', localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState })));
 
     startBtn.classList.add('hidden');
-    mainUI.classList.remove('hidden');
-    visualizer.classList.add('breathing');
+    waitingUI.classList.remove('hidden');
 
     connectSignaling();
   } catch (err) {
@@ -97,27 +97,26 @@ visualizer.addEventListener('click', () => {
   log('User clicked sphere to skip');
   if (websocket && websocket.readyState === WebSocket.OPEN) {
     // Remove clickable state
-    visualizer.classList.remove('clickable');
+    visualizer.classList.remove('clickable', 'active');
     
     // Tremor animation - the sphere vibrates in annoyance at rejection
     visualizer.classList.remove('tremor', 'fade-cycle', 'breathing');
     void visualizer.offsetWidth; // Force reflow to restart animation
     visualizer.classList.add('tremor');
-    // After tremor, fade out and back in
+    // After tremor, fade out then switch to waiting UI
     setTimeout(() => {
       visualizer.classList.remove('tremor');
       visualizer.classList.add('fade-cycle');
       setTimeout(() => {
         visualizer.classList.remove('fade-cycle');
-        visualizer.classList.add('breathing');
+        mainUI.classList.add('hidden');
+        waitingUI.classList.remove('hidden');
       }, 1200);
     }, 600);
     
     cleanupPeerConnection();
     websocket.send(JSON.stringify({ type: 'next' }));
     log('Sent: next');
-    setStatus('');
-    visualizer.classList.remove('active');
   } else {
     log('Cannot send next - websocket not open, readyState:', websocket?.readyState);
   }
@@ -177,7 +176,10 @@ function handleSignalingMessage(data) {
 
     case 'matched':
       log('Matched with partner, initiator:', data.initiator);
-      setStatus('connecting...');
+      waitingUI.classList.add('hidden');
+      mainUI.classList.remove('hidden');
+      visualizer.classList.add('breathing');
+      setStatus('');
       createPeerConnection();
       if (data.initiator) {
         createOffer();
@@ -202,9 +204,9 @@ function handleSignalingMessage(data) {
     case 'partner_left':
       log('Partner left');
       cleanupPeerConnection();
-      setStatus('');
-      visualizer.classList.add('breathing');
-      visualizer.classList.remove('active', 'clickable');
+      mainUI.classList.add('hidden');
+      waitingUI.classList.remove('hidden');
+      visualizer.classList.remove('active', 'clickable', 'breathing');
       // Auto-rejoin after a moment
       setTimeout(() => {
         if (websocket && websocket.readyState === WebSocket.OPEN) {
@@ -293,9 +295,11 @@ function createPeerConnection() {
     
     switch (peerConnection.connectionState) {
       case 'connected':
-        setStatus('connected', true);
+        setStatus('');
         visualizer.classList.remove('breathing');
         visualizer.classList.add('clickable');
+        // Hello wiggle using liquid distortion
+        helloWiggle();
         break;
       case 'disconnected':
         setStatus('reconnecting...');
@@ -535,6 +539,45 @@ function visualize() {
 function setStatus(text, isConnected = false) {
   status.textContent = text;
   status.classList.toggle('connected', isConnected);
+}
+
+// Hello wiggle - simulates a brief voice-like distortion
+function helloWiggle() {
+  const displacement = document.getElementById('displacement');
+  const turbulence = document.getElementById('turbulence');
+  if (!displacement || !turbulence) return;
+  
+  let phase = 0;
+  const duration = 800;
+  const startTime = Date.now();
+  
+  function animate() {
+    const elapsed = Date.now() - startTime;
+    const progress = elapsed / duration;
+    
+    if (progress >= 1) {
+      displacement.setAttribute('scale', 0);
+      return;
+    }
+    
+    // Bell curve intensity - ramps up then down
+    const intensity = Math.sin(progress * Math.PI);
+    phase += 0.1;
+    
+    const scale = intensity * 20;
+    const freq = 0.015 + intensity * 0.02;
+    
+    turbulence.setAttribute('baseFrequency', `${freq} ${freq * 1.2}`);
+    turbulence.setAttribute('seed', Math.floor(phase * 10) % 100);
+    displacement.setAttribute('scale', scale);
+    
+    // Also scale the sphere slightly
+    visualizer.style.transform = `scale(${1 + intensity * 0.15})`;
+    
+    requestAnimationFrame(animate);
+  }
+  
+  animate();
 }
 
 // ============================================

@@ -20,7 +20,12 @@
     </defs>
   </svg>
 
-  <!-- Main UI: shown after mic permission granted -->
+  <!-- Waiting state -->
+  <div id="waiting-ui" class="hidden">
+    <div id="waiting-text">waiting</div>
+  </div>
+
+  <!-- Main UI: shown when connected -->
   <div id="main-ui" class="hidden">
     <div id="visualizer-container">
       <div id="visualizer"></div>
