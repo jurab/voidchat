@@ -122,25 +122,27 @@ visualizer.addEventListener('click', () => {
   log('User clicked sphere to skip');
   if (websocket && websocket.readyState === WebSocket.OPEN) {
     // Remove clickable state
-    visualizer.classList.remove('clickable', 'active');
+    visualizer.classList.remove('clickable', 'active', 'breathing');
     
-    // Tremor animation - the sphere vibrates in annoyance at rejection
-    visualizer.classList.remove('tremor', 'fade-cycle', 'breathing');
-    void visualizer.offsetWidth; // Force reflow to restart animation
+    // Tremor animation
+    visualizer.classList.remove('tremor', 'crt-off');
+    void visualizer.offsetWidth; // Force reflow
     visualizer.classList.add('tremor');
-    // After tremor, fade out then add breathing (waiting UI switch handled by 'waiting' message)
+    
+    // After tremor (600ms), play CRT off
     setTimeout(() => {
       visualizer.classList.remove('tremor');
-      visualizer.classList.add('fade-cycle');
+      void visualizer.offsetWidth;
+      visualizer.classList.add('crt-off');
+      
+      // After CRT (500ms), cleanup and send next
       setTimeout(() => {
-        visualizer.classList.remove('fade-cycle');
-        visualizer.classList.add('breathing');
-      }, 1200);
+        visualizer.classList.remove('crt-off');
+        cleanupPeerConnection();
+        websocket.send(JSON.stringify({ type: 'next' }));
+        log('Sent: next');
+      }, 500);
     }, 600);
-    
-    cleanupPeerConnection();
-    websocket.send(JSON.stringify({ type: 'next' }));
-    log('Sent: next');
   } else {
     log('Cannot send next - websocket not open, readyState:', websocket?.readyState);
   }
@@ -240,18 +242,39 @@ function handleSignalingMessage(data) {
 
     case 'partner_left':
       log('Partner left');
-      cleanupPeerConnection();
-      mainUI.classList.add('hidden');
-      mainUI.classList.remove('fade-in');
-      waitingUI.classList.remove('hidden', 'fade-out');
-      visualizer.classList.remove('active', 'clickable', 'breathing');
-      // Auto-rejoin after a moment
+      // Play tremor → CRT animation, then go to waiting
+      visualizer.classList.remove('clickable', 'active', 'breathing');
+      visualizer.classList.remove('tremor', 'crt-off');
+      void visualizer.offsetWidth;
+      visualizer.classList.add('tremor');
+      
       setTimeout(() => {
-        if (websocket && websocket.readyState === WebSocket.OPEN) {
-          websocket.send(JSON.stringify({ type: 'join' }));
-          log('Sent: join (auto-rejoin after partner left)');
-        }
-      }, 1000);
+        visualizer.classList.remove('tremor');
+        void visualizer.offsetWidth;
+        visualizer.classList.add('crt-off');
+        
+        setTimeout(() => {
+          visualizer.classList.remove('crt-off');
+          cleanupPeerConnection();
+          
+          // Switch to waiting UI
+          mainUI.classList.add('hidden');
+          mainUI.classList.remove('fade-in');
+          waitingUI.classList.remove('hidden', 'fade-out');
+          
+          // Reset waiting text animation
+          const waitingText = document.getElementById('waiting-text');
+          waitingText.style.animation = 'none';
+          waitingText.offsetHeight;
+          waitingText.style.animation = '';
+          
+          // Auto-rejoin
+          if (websocket && websocket.readyState === WebSocket.OPEN) {
+            websocket.send(JSON.stringify({ type: 'join' }));
+            log('Sent: join (auto-rejoin after partner left)');
+          }
+        }, 500);
+      }, 600);
       break;
 
     case 'stats':
@@ -449,7 +472,6 @@ function cleanupPeerConnection() {
     peerConnection = null;
   }
   
-  visualizer.style.transform = 'scale(1)';
   visualizer.classList.remove('active');
   log('Peer connection cleanup complete');
 }
