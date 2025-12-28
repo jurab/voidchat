@@ -642,7 +642,7 @@ function setStatus(text, isConnected = false) {
   status.classList.toggle('connected', isConnected);
 }
 
-// Explode text into letters - shake then crumble down
+// Explode text into letters - shake then crumble down with coupled physics
 function explodeText(element) {
   const text = element.textContent;
   
@@ -657,73 +657,230 @@ function explodeText(element) {
   container.style.left = `${centerX}px`;
   container.style.top = `${centerY}px`;
   
-  // Split text into individual characters
+  // Build letter data with physics state
+  const letters = [];
+  const couplingStrength = 0.15; // How much neighbors influence each other (reduced)
+  const shakeDuration = 1400; // ms
+  const fallDuration = 900; // ms
+  const totalDuration = shakeDuration + fallDuration;
+  
+  // Create clinging groups (2-3 adjacent letters that fall together initially)
+  const clingGroups = [];
+  let i = 0;
+  while (i < text.length) {
+    if (Math.random() < 0.4 && i < text.length - 1) {
+      // Start a cling group
+      const groupSize = Math.random() < 0.5 ? 2 : 3;
+      const group = {
+        start: i,
+        end: Math.min(i + groupSize, text.length),
+        driftX: (Math.random() - 0.5) * 25,
+        fallY: 200 + Math.random() * 120,
+        breakTime: 0.3 + Math.random() * 0.4, // When they separate (0-1 of fall phase)
+      };
+      clingGroups.push(group);
+      i = group.end;
+    } else {
+      i++;
+    }
+  }
+  
+  // Check if letter index is in a cling group
+  function getClingGroup(idx) {
+    for (const g of clingGroups) {
+      if (idx >= g.start && idx < g.end) return g;
+    }
+    return null;
+  }
+  
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     const span = document.createElement('span');
-    span.textContent = char === ' ' ? '\u00A0' : char; // Use non-breaking space for spaces
-    
-    // Shake phase - small random trembles
-    const shakeX = (Math.random() - 0.5) * 6;
-    const shakeY = (Math.random() - 0.5) * 4;
-    const shakeRot = (Math.random() - 0.5) * 8;
-    const vibrate = (Math.random() - 0.5) * 3; // Small rotational vibration
-    
-    // Crumble phase - fall downward with small horizontal drift
-    const driftX = (Math.random() - 0.5) * 30; // Reduced horizontal drift
-    const fallY = 200 + Math.random() * 150; // Fall down
-    const rot = (Math.random() - 0.5) * 180; // Tumble as they fall
-    
-    // Opacity fluctuation during shake phase
-    const shakeOp1 = 0.6 + Math.random() * 0.4;  // 0.6-1.0
-    const shakeOp2 = 0.7 + Math.random() * 0.3;  // 0.7-1.0
-    const shakeOp3 = 0.5 + Math.random() * 0.5;  // 0.5-1.0
-    const shakeOp4 = 0.65 + Math.random() * 0.35; // 0.65-1.0
-    const shakeOp5 = 0.5 + Math.random() * 0.5;  // 0.5-1.0
-    const shakeOp6 = 0.7 + Math.random() * 0.3;  // 0.7-1.0
-    const shakeOp7 = 0.55 + Math.random() * 0.45; // 0.55-1.0
-    const shakeOp8 = 0.6 + Math.random() * 0.4;  // 0.6-1.0
-    
-    // Flicker values during crumble - stronger opacity fluctuation
-    const flicker1 = 0.7 + Math.random() * 0.25; // 0.7-0.95
-    const flicker2 = 0.5 + Math.random() * 0.3;  // 0.5-0.8
-    const flicker3 = 0.3 + Math.random() * 0.25; // 0.3-0.55
-    const flicker4 = 0.1 + Math.random() * 0.2;  // 0.1-0.3
-    
-    // Stagger delay - first letters fall while last ones still shaking
-    const delay = i * 0.08; // 80ms between each letter
-    
-    span.style.setProperty('--shake-x', `${shakeX}px`);
-    span.style.setProperty('--shake-y', `${shakeY}px`);
-    span.style.setProperty('--shake-rot', `${shakeRot}deg`);
-    span.style.setProperty('--vibrate', `${vibrate}deg`);
-    span.style.setProperty('--drift-x', `${driftX}px`);
-    span.style.setProperty('--fall-y', `${fallY}px`);
-    span.style.setProperty('--rot', `${rot}deg`);
-    span.style.setProperty('--shake-op-1', shakeOp1);
-    span.style.setProperty('--shake-op-2', shakeOp2);
-    span.style.setProperty('--shake-op-3', shakeOp3);
-    span.style.setProperty('--shake-op-4', shakeOp4);
-    span.style.setProperty('--shake-op-5', shakeOp5);
-    span.style.setProperty('--shake-op-6', shakeOp6);
-    span.style.setProperty('--shake-op-7', shakeOp7);
-    span.style.setProperty('--shake-op-8', shakeOp8);
-    span.style.setProperty('--flicker-1', flicker1);
-    span.style.setProperty('--flicker-2', flicker2);
-    span.style.setProperty('--flicker-3', flicker3);
-    span.style.setProperty('--flicker-4', flicker4);
-    span.style.setProperty('--delay', `${delay}s`);
-    
+    span.textContent = char === ' ' ? '\u00A0' : char;
+    span.style.display = 'inline-block';
     container.appendChild(span);
+    
+    const clingGroup = getClingGroup(i);
+    
+    letters.push({
+      el: span,
+      // Position offsets
+      x: 0,
+      y: 0,
+      rot: 0,
+      // Velocities for shake phase
+      vx: 0,
+      vy: 0,
+      vrot: 0,
+      // Target shake values (randomized each frame)
+      targetX: 0,
+      targetY: 0,
+      targetRot: 0,
+      // Fall phase values
+      driftX: clingGroup ? clingGroup.driftX + (i - clingGroup.start) * 2 : (Math.random() - 0.5) * 35,
+      fallY: clingGroup ? clingGroup.fallY : 200 + Math.random() * 150,
+      finalRot: (Math.random() - 0.5) * 180,
+      // Stagger - letters on the ends break off first
+      staggerDelay: Math.min(i, text.length - 1 - i) * 40, // middle letters fall last
+      // Cling group reference
+      clingGroup,
+      clingIndex: clingGroup ? i - clingGroup.start : -1,
+      // Opacity
+      opacity: 1,
+    });
   }
   
   document.body.appendChild(container);
   
-  // Remove the container after animation completes (base + max delay)
-  const totalTime = 2500 + text.length * 80;
+  const startTime = Date.now();
+  let lastFrame = startTime;
+  
+  function animate() {
+    const now = Date.now();
+    const elapsed = now - startTime;
+    const dt = Math.min((now - lastFrame) / 1000, 0.05); // Cap dt to avoid jumps
+    lastFrame = now;
+    
+    if (elapsed > totalDuration + 200) {
+      container.remove();
+      return;
+    }
+    
+    // Update each letter
+    for (let i = 0; i < letters.length; i++) {
+      const letter = letters[i];
+      const letterElapsed = Math.max(0, elapsed - letter.staggerDelay);
+      
+      if (letterElapsed < shakeDuration) {
+        // === SHAKE PHASE: coupled vibrations ===
+        const shakeProgress = letterElapsed / shakeDuration;
+        // Intensity peaks at 60% then winds down to zero
+        const intensity = shakeProgress < 0.6 
+          ? Math.sin(shakeProgress / 0.6 * Math.PI * 0.5) 
+          : Math.cos((shakeProgress - 0.6) / 0.4 * Math.PI * 0.5);
+        
+        // Generate new random targets periodically
+        if (Math.random() < 0.12) {
+          letter.targetX = (Math.random() - 0.5) * 6 * intensity;
+          letter.targetY = (Math.random() - 0.5) * 4 * intensity;
+          letter.targetRot = (Math.random() - 0.5) * 10 * intensity;
+        }
+        
+        // Wind down targets as we approach end
+        if (shakeProgress > 0.7) {
+          const windDown = (shakeProgress - 0.7) / 0.3;
+          letter.targetX *= (1 - windDown);
+          letter.targetY *= (1 - windDown);
+          letter.targetRot *= (1 - windDown);
+        }
+        
+        // Get neighbor influence (weak spring coupling)
+        let neighborInfluenceX = 0;
+        let neighborInfluenceY = 0;
+        let neighborInfluenceRot = 0;
+        
+        if (i > 0) {
+          const left = letters[i - 1];
+          neighborInfluenceX += (left.x - letter.x) * couplingStrength;
+          neighborInfluenceY += (left.y - letter.y) * couplingStrength;
+          neighborInfluenceRot += (left.rot - letter.rot) * couplingStrength * 0.3;
+        }
+        if (i < letters.length - 1) {
+          const right = letters[i + 1];
+          neighborInfluenceX += (right.x - letter.x) * couplingStrength;
+          neighborInfluenceY += (right.y - letter.y) * couplingStrength;
+          neighborInfluenceRot += (right.rot - letter.rot) * couplingStrength * 0.3;
+        }
+        
+        // Spring toward target + neighbor influence
+        const springK = 0.12;
+        const damping = 0.88;
+        
+        letter.vx += (letter.targetX - letter.x) * springK + neighborInfluenceX;
+        letter.vy += (letter.targetY - letter.y) * springK + neighborInfluenceY;
+        letter.vrot += (letter.targetRot - letter.rot) * springK + neighborInfluenceRot;
+        
+        letter.vx *= damping;
+        letter.vy *= damping;
+        letter.vrot *= damping;
+        
+        letter.x += letter.vx;
+        letter.y += letter.vy;
+        letter.rot += letter.vrot;
+        
+        // Flicker opacity
+        letter.opacity = 0.7 + Math.random() * 0.3;
+        
+      } else {
+        // Reset velocities on first frame of fall phase
+        if (!letter.inFallPhase) {
+          letter.inFallPhase = true;
+          letter.vx = 0;
+          letter.vy = 0;
+          letter.vrot = 0;
+          // Start fall from near zero
+          letter.x *= 0.3;
+          letter.y *= 0.3;
+          letter.rot *= 0.3;
+        }
+        // === FALL PHASE: crumble with clinging ===
+        const fallElapsed = letterElapsed - shakeDuration;
+        const fallProgress = Math.min(fallElapsed / fallDuration, 1);
+        
+        // Easing for fall (ease-out cubic)
+        const eased = 1 - Math.pow(1 - fallProgress, 3);
+        
+        let targetX, targetY, targetRot;
+        
+        if (letter.clingGroup && fallProgress < letter.clingGroup.breakTime) {
+          // Still clinging - move together with slight offset
+          const groupProgress = fallProgress / letter.clingGroup.breakTime;
+          targetX = letter.clingGroup.driftX * groupProgress * 0.5 + letter.clingIndex * 1.5;
+          targetY = letter.clingGroup.fallY * groupProgress * 0.3;
+          targetRot = letter.finalRot * groupProgress * 0.2;
+        } else {
+          // Broken free or solo - fall independently
+          let breakProgress = fallProgress;
+          if (letter.clingGroup) {
+            // Adjust progress to start from break point
+            breakProgress = (fallProgress - letter.clingGroup.breakTime) / (1 - letter.clingGroup.breakTime);
+            breakProgress = Math.max(0, breakProgress);
+          }
+          const breakEased = 1 - Math.pow(1 - breakProgress, 2);
+          
+          targetX = letter.driftX * eased;
+          targetY = letter.fallY * eased;
+          targetRot = letter.finalRot * breakEased;
+        }
+        
+        // Smooth transition
+        letter.x += (targetX - letter.x) * 0.15;
+        letter.y += (targetY - letter.y) * 0.15;
+        letter.rot += (targetRot - letter.rot) * 0.1;
+        
+        // Fade out with flicker
+        const fadeStart = 0.4;
+        if (fallProgress > fadeStart) {
+          const fadeProgress = (fallProgress - fadeStart) / (1 - fadeStart);
+          letter.opacity = (1 - fadeProgress) * (0.7 + Math.random() * 0.3);
+        }
+      }
+      
+      // Apply transform
+      letter.el.style.transform = `translate(${letter.x}px, ${letter.y}px) rotate(${letter.rot}deg)`;
+      letter.el.style.opacity = letter.opacity;
+    }
+    
+    requestAnimationFrame(animate);
+  }
+  
+  // Initial glimmer flash
+  container.style.textShadow = '0 0 40px rgba(255, 255, 255, 1), 0 0 80px rgba(255, 255, 255, 0.7)';
   setTimeout(() => {
-    container.remove();
-  }, totalTime);
+    container.style.textShadow = '0 0 20px rgba(255, 255, 255, 0.5)';
+  }, 100);
+  
+  animate();
 }
 
 // Hello wiggle - simulates a brief voice-like distortion
