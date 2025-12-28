@@ -37,6 +37,7 @@ const logError = (...args) => {
 };
 
 // DOM elements
+const micBtn = document.getElementById('mic-btn');
 const startBtn = document.getElementById('start-btn');
 const waitingUI = document.getElementById('waiting-ui');
 const mainUI = document.getElementById('main-ui');
@@ -56,24 +57,11 @@ let remoteAudioElement = null;
 // INITIALIZATION
 // ============================================
 
-startBtn.addEventListener('click', async () => {
-  log('User clicked start button');
-  
-  // Explode the button text and hide button immediately
-  explodeText(startBtn);
-  startBtn.classList.add('hidden');
+// Step 1: Request microphone permission
+micBtn.addEventListener('click', async () => {
+  log('User clicked mic button');
   
   try {
-    // Fetch TURN credentials first
-    log('Fetching TURN credentials...');
-    const credResponse = await fetch(CREDENTIALS_URL);
-    if (!credResponse.ok) {
-      throw new Error('Failed to fetch TURN credentials');
-    }
-    const credData = await credResponse.json();
-    iceServers = credData.iceServers;
-    log('Got ICE servers:', iceServers.map(s => s.urls));
-    
     log('Requesting microphone access...');
     localStream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -85,9 +73,42 @@ startBtn.addEventListener('click', async () => {
     });
     log('Microphone access granted, tracks:', localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState })));
 
-    waitingUI.classList.remove('hidden');
+    // Fade out mic button, then show enter button
+    micBtn.classList.add('fade-out');
+    setTimeout(() => {
+      micBtn.classList.add('hidden');
+      startBtn.classList.remove('hidden');
+    }, 500);
+  } catch (err) {
+    logError('Microphone access failed:', err);
+    alert('Microphone access is required to use voidchat');
+  }
+});
 
-    connectSignaling();
+// Step 2: Enter the void
+startBtn.addEventListener('click', async () => {
+  log('User clicked start button');
+  
+  // Explode the button text and hide button immediately
+  explodeText(startBtn);
+  startBtn.classList.add('hidden');
+  
+  try {
+    // Fetch TURN credentials
+    log('Fetching TURN credentials...');
+    const credResponse = await fetch(CREDENTIALS_URL);
+    if (!credResponse.ok) {
+      throw new Error('Failed to fetch TURN credentials');
+    }
+    const credData = await credResponse.json();
+    iceServers = credData.iceServers;
+    log('Got ICE servers:', iceServers.map(s => s.urls));
+
+    // Delay connection until exploding animation finishes
+    setTimeout(() => {
+      waitingUI.classList.remove('hidden');
+      connectSignaling();
+    }, 2400);
   } catch (err) {
     logError('Startup failed:', err);
     alert('Failed to start: ' + err.message);
@@ -175,7 +196,12 @@ function handleSignalingMessage(data) {
       log('Now waiting for partner');
       mainUI.classList.add('hidden');
       mainUI.classList.remove('fade-in');
-      waitingUI.classList.remove('hidden');
+      waitingUI.classList.remove('hidden', 'fade-out');
+      // Reset waiting text animation
+      const waitingText = document.getElementById('waiting-text');
+      waitingText.style.animation = 'none';
+      waitingText.offsetHeight; // Force reflow
+      waitingText.style.animation = '';
       visualizer.classList.remove('clickable', 'breathing', 'active');
       break;
 
@@ -216,7 +242,8 @@ function handleSignalingMessage(data) {
       log('Partner left');
       cleanupPeerConnection();
       mainUI.classList.add('hidden');
-      waitingUI.classList.remove('hidden');
+      mainUI.classList.remove('fade-in');
+      waitingUI.classList.remove('hidden', 'fade-out');
       visualizer.classList.remove('active', 'clickable', 'breathing');
       // Auto-rejoin after a moment
       setTimeout(() => {
