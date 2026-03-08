@@ -22,13 +22,15 @@
     <div id="visualizer-container">
       <div id="visualizer"></div>
       <div id="sphere-text-container">
-        <button id="mic-btn">can't hear you</button>
-        <button id="start-btn" class="hidden">enter the void</button>
+        <div id="presence-text">no one else here</div>
+        <button id="talk-btn">click to talk</button>
         <div id="waiting-text" class="hidden">waiting</div>
       </div>
     </div>
     <div id="status" class="hidden">connecting...</div>
   </div>
+
+  <!-- <input id="host-input" type="text" autocomplete="off" spellcheck="false"> -->
 
   <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
   <script src="app.js"></script>

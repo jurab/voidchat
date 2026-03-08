@@ -27,11 +27,12 @@ const logError = (...args) => {
 };
 
 // DOM elements
-const micBtn = document.getElementById('mic-btn');
-const startBtn = document.getElementById('start-btn');
+const presenceText = document.getElementById('presence-text');
+const talkBtn = document.getElementById('talk-btn');
 const waitingText = document.getElementById('waiting-text');
 const visualizer = document.getElementById('visualizer');
 const status = document.getElementById('status');
+const hostInput = document.getElementById('host-input');
 
 // State
 let localStream = null;
@@ -41,17 +42,18 @@ let audioContext = null;
 let analyser = null;
 let animationId = null;
 let remoteAudioElement = null;
+let joined = false; // whether we've sent 'join'
 
 // ============================================
 // INITIALIZATION
 // ============================================
 
-// Handle mic/enter actions (can be triggered by button or sphere click)
-async function handleMicClick() {
-  if (localStream) return; // Already have mic access
-  
-  log('User clicked to enable mic');
-  
+// Handle click to talk - request mic then join immediately
+async function handleTalkClick() {
+  if (localStream || joined) return;
+
+  log('User clicked to talk');
+
   try {
     log('Requesting microphone access...');
     localStream = await navigator.mediaDevices.getUserMedia({
@@ -64,79 +66,56 @@ async function handleMicClick() {
     });
     log('Microphone access granted, tracks:', localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, readyState: t.readyState })));
 
-    // Add underglow to sphere (no breathing yet)
-    visualizer.classList.add('underglow');
-    
-    // Fade out mic button, then show enter button
-    micBtn.classList.add('fade-out');
+    // Fade out presence info
+    presenceText.classList.add('fade-out');
+    talkBtn.classList.add('fade-out');
+
     setTimeout(() => {
-      micBtn.classList.add('hidden');
-      startBtn.classList.remove('hidden');
+      presenceText.classList.add('hidden');
+      talkBtn.classList.add('hidden');
+
+      // Start subtle breathing + waiting text
+      visualizer.classList.add('breathing-subtle');
+      waitingText.classList.remove('hidden');
+      waitingText.classList.add('pulsing');
+
+      // Join matchmaking
+      joined = true;
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send(JSON.stringify({ type: 'join' }));
+        log('Sent: join');
+      }
     }, 500);
+
+    // Fetch TURN credentials in background
+    fetchTurnCredentials();
+
   } catch (err) {
     logError('Microphone access failed:', err);
     alert('Microphone access is required to use voidchat');
   }
 }
 
-async function handleEnterClick() {
-  if (!localStream || startBtn.classList.contains('hidden')) return; // Not ready yet
-  
-  log('User clicked to enter');
-  
-  // Start sphere breathing (subtle)
-  visualizer.classList.remove('underglow');
-  visualizer.classList.add('breathing-subtle');
-  
-  // Explode the button text and hide button immediately
-  explodeText(startBtn);
-  startBtn.classList.add('hidden');
-  
+async function fetchTurnCredentials() {
   try {
-    // Fetch TURN credentials
     log('Fetching TURN credentials...');
     const credResponse = await fetch(CREDENTIALS_URL);
-    if (!credResponse.ok) {
-      throw new Error('Failed to fetch TURN credentials');
-    }
+    if (!credResponse.ok) throw new Error('Failed to fetch TURN credentials');
     const credData = await credResponse.json();
     iceServers = credData.iceServers;
     log('Got ICE servers:', iceServers.map(s => s.urls));
-
-    // Delay showing waiting text until exploding animation finishes
-    setTimeout(() => {
-      waitingText.classList.remove('hidden');
-      waitingText.classList.add('pulsing');
-      connectSignaling();
-    }, 2400);
   } catch (err) {
-    logError('Startup failed:', err);
-    alert('Failed to start: ' + err.message);
+    logError('Failed to fetch TURN credentials:', err);
   }
 }
 
-// Step 1: Request microphone permission
-micBtn.addEventListener('click', handleMicClick);
+// Talk button click
+talkBtn.addEventListener('click', handleTalkClick);
 
-// Step 2: Enter the void
-startBtn.addEventListener('click', handleEnterClick);
-
-// Sphere click - triggers current action (mic or enter)
+// Sphere click - triggers talk (or skip if connected)
 visualizer.addEventListener('click', () => {
-  // If already in connected state, this is handled by the skip logic below
   if (visualizer.classList.contains('clickable')) return;
-  
-  // If mic not enabled yet, trigger mic
-  if (!localStream) {
-    handleMicClick();
-    return;
-  }
-  
-  // If mic enabled but not entered yet, trigger enter
-  if (!startBtn.classList.contains('hidden')) {
-    handleEnterClick();
-    return;
-  }
+  if (!joined) handleTalkClick();
 });
 
 // Click sphere to go next (only when connected)
@@ -178,26 +157,43 @@ visualizer.addEventListener('click', () => {
   }
 });
 
+// Host auth input (uncomment input in index.html to enable)
+if (hostInput) {
+  hostInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const token = hostInput.value.trim();
+      if (token && websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send(JSON.stringify({ type: 'auth', token }));
+        log('Sent: auth');
+      }
+      hostInput.value = '';
+      hostInput.blur();
+    }
+  });
+}
+
 // ============================================
 // SIGNALING
 // ============================================
 
 function connectSignaling() {
   log('Connecting to signaling server:', SIGNALING_URL);
-  setStatus('connecting...');
 
   websocket = new WebSocket(SIGNALING_URL);
 
   websocket.onopen = () => {
     log('WebSocket connected');
-    websocket.send(JSON.stringify({ type: 'join' }));
-    log('Sent: join');
+    // If already joined (reconnect), rejoin matchmaking
+    if (joined) {
+      websocket.send(JSON.stringify({ type: 'join' }));
+      log('Sent: join (reconnect)');
+    }
   };
 
   websocket.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
-      log('Received:', data.type, data.type === 'stats' ? `(online: ${data.online})` : JSON.stringify(data).slice(0, 100));
+      log('Received:', data.type, data.type === 'stats' ? `(online: ${data.online}, host: ${data.hostStatus})` : JSON.stringify(data).slice(0, 100));
       handleSignalingMessage(data);
     } catch (err) {
       logError('Failed to parse message:', err, event.data);
@@ -206,14 +202,10 @@ function connectSignaling() {
 
   websocket.onclose = (event) => {
     log('WebSocket closed, code:', event.code, 'reason:', event.reason, 'wasClean:', event.wasClean);
-    setStatus('disconnected');
-    
-    // Attempt reconnect after delay
+    // Always reconnect (for presence)
     setTimeout(() => {
-      if (localStream) {
-        log('Attempting reconnect...');
-        connectSignaling();
-      }
+      log('Attempting reconnect...');
+      connectSignaling();
     }, 2000);
   };
 
@@ -221,6 +213,9 @@ function connectSignaling() {
     logError('WebSocket error:', err);
   };
 }
+
+// Connect immediately for presence
+connectSignaling();
 
 function handleSignalingMessage(data) {
   switch (data.type) {
@@ -293,7 +288,42 @@ function handleSignalingMessage(data) {
       break;
 
     case 'stats':
-      // Ignore stats, we removed the online count display
+      if (!joined) {
+        const hostName = data.hostName || 'Host';
+        const hostStatus = data.hostStatus || 'away';
+        const others = data.online || 0;
+
+        // Line 1: host presence
+        if (hostStatus === 'online') {
+          presenceText.textContent = `${hostName} is online`;
+        } else if (hostStatus === 'busy') {
+          presenceText.textContent = `${hostName} is busy`;
+        } else {
+          presenceText.textContent = `${hostName} is away`;
+        }
+
+        // Line 2: subtitle / talk button
+        if (hostStatus === 'online') {
+          talkBtn.textContent = 'press to talk';
+        } else if (hostStatus === 'busy') {
+          if (others > 0) {
+            talkBtn.textContent = `${others} other${others > 1 ? 's' : ''} online · press to talk`;
+          } else {
+            talkBtn.textContent = 'join the queue';
+          }
+        } else {
+          // away
+          if (others > 0) {
+            talkBtn.textContent = `${others} other${others > 1 ? 's' : ''} online · press to talk`;
+          } else {
+            talkBtn.textContent = 'nobody online · step into the void';
+          }
+        }
+      }
+      break;
+
+    case 'auth_ok':
+      log('Authenticated as host');
       break;
 
     case 'error':
@@ -640,262 +670,6 @@ function visualize() {
 function setStatus(text, isConnected = false) {
   status.textContent = text;
   status.classList.toggle('connected', isConnected);
-}
-
-// Explode text into letters - shake then crumble down with coupled physics
-function explodeText(element) {
-  const text = element.textContent;
-  
-  // Get the button's position to spawn letters there
-  const rect = element.getBoundingClientRect();
-  const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2;
-  
-  // Create container for exploding letters
-  const container = document.createElement('div');
-  container.id = 'exploding-text';
-  container.style.left = `${centerX}px`;
-  container.style.top = `${centerY}px`;
-  
-  // Build letter data with physics state
-  const letters = [];
-  const couplingStrength = 0.15; // How much neighbors influence each other (reduced)
-  const shakeDuration = 1400; // ms
-  const fallDuration = 900; // ms
-  const totalDuration = shakeDuration + fallDuration;
-  
-  // Create clinging groups (2-3 adjacent letters that fall together initially)
-  const clingGroups = [];
-  let i = 0;
-  while (i < text.length) {
-    if (Math.random() < 0.4 && i < text.length - 1) {
-      // Start a cling group
-      const groupSize = Math.random() < 0.5 ? 2 : 3;
-      const group = {
-        start: i,
-        end: Math.min(i + groupSize, text.length),
-        driftX: (Math.random() - 0.5) * 25,
-        fallY: 200 + Math.random() * 120,
-        breakTime: 0.3 + Math.random() * 0.4, // When they separate (0-1 of fall phase)
-      };
-      clingGroups.push(group);
-      i = group.end;
-    } else {
-      i++;
-    }
-  }
-  
-  // Check if letter index is in a cling group
-  function getClingGroup(idx) {
-    for (const g of clingGroups) {
-      if (idx >= g.start && idx < g.end) return g;
-    }
-    return null;
-  }
-  
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const span = document.createElement('span');
-    span.textContent = char === ' ' ? '\u00A0' : char;
-    span.style.display = 'inline-block';
-    container.appendChild(span);
-    
-    const clingGroup = getClingGroup(i);
-    
-    // Calculate sphere arc: middle letters pushed down more (parabola)
-    // normalized position: -1 (left edge) to 1 (right edge)
-    const normalizedPos = text.length > 1 ? (i / (text.length - 1)) * 2 - 1 : 0;
-    // Parabola: 1 at center, 0 at edges
-    const sphereArc = 1 - normalizedPos * normalizedPos;
-    
-    letters.push({
-      el: span,
-      // Position offsets
-      x: 0,
-      y: 0,
-      rot: 0,
-      // Sphere curvature - middle letters bend down more
-      sphereArc,
-      // Velocities for shake phase
-      vx: 0,
-      vy: 0,
-      vrot: 0,
-      // Target shake values (randomized each frame)
-      targetX: 0,
-      targetY: 0,
-      targetRot: 0,
-      // Fall phase values
-      driftX: clingGroup ? clingGroup.driftX + (i - clingGroup.start) * 2 : (Math.random() - 0.5) * 35,
-      fallY: clingGroup ? clingGroup.fallY : 200 + Math.random() * 150,
-      finalRot: (Math.random() - 0.5) * 180,
-      // Stagger - letters on the ends break off first
-      staggerDelay: Math.min(i, text.length - 1 - i) * 40, // middle letters fall last
-      // Cling group reference
-      clingGroup,
-      clingIndex: clingGroup ? i - clingGroup.start : -1,
-      // Opacity
-      opacity: 1,
-    });
-  }
-  
-  document.body.appendChild(container);
-  
-  const startTime = Date.now();
-  let lastFrame = startTime;
-  
-  function animate() {
-    const now = Date.now();
-    const elapsed = now - startTime;
-    const dt = Math.min((now - lastFrame) / 1000, 0.05); // Cap dt to avoid jumps
-    lastFrame = now;
-    
-    if (elapsed > totalDuration + 200) {
-      container.remove();
-      return;
-    }
-    
-    // Update each letter
-    for (let i = 0; i < letters.length; i++) {
-      const letter = letters[i];
-      const letterElapsed = Math.max(0, elapsed - letter.staggerDelay);
-      
-      if (letterElapsed < shakeDuration) {
-        // === SHAKE PHASE: coupled vibrations ===
-        const shakeProgress = letterElapsed / shakeDuration;
-        // Intensity peaks at 60% then winds down to zero
-        const intensity = shakeProgress < 0.6 
-          ? Math.sin(shakeProgress / 0.6 * Math.PI * 0.5) 
-          : Math.cos((shakeProgress - 0.6) / 0.4 * Math.PI * 0.5);
-        
-        // Sphere push: grows during shake, peaks at ~70%, represents sphere pushing up from below
-        const spherePush = Math.sin(Math.min(shakeProgress / 0.7, 1) * Math.PI * 0.5);
-        const sphereBend = letter.sphereArc * spherePush * 12; // max 12px bend at center
-        
-        // Generate new random targets periodically
-        if (Math.random() < 0.12) {
-          letter.targetX = (Math.random() - 0.5) * 6 * intensity;
-          letter.targetY = (Math.random() - 0.5) * 4 * intensity + sphereBend;
-          letter.targetRot = (Math.random() - 0.5) * 10 * intensity;
-        } else {
-          // Always apply sphere bend even when not generating new random target
-          letter.targetY = letter.targetY * 0.9 + sphereBend * 0.1;
-        }
-        
-        // Wind down targets as we approach end
-        if (shakeProgress > 0.7) {
-          const windDown = (shakeProgress - 0.7) / 0.3;
-          letter.targetX *= (1 - windDown);
-          letter.targetY *= (1 - windDown);
-          letter.targetRot *= (1 - windDown);
-        }
-        
-        // Get neighbor influence (weak spring coupling)
-        let neighborInfluenceX = 0;
-        let neighborInfluenceY = 0;
-        let neighborInfluenceRot = 0;
-        
-        if (i > 0) {
-          const left = letters[i - 1];
-          neighborInfluenceX += (left.x - letter.x) * couplingStrength;
-          neighborInfluenceY += (left.y - letter.y) * couplingStrength;
-          neighborInfluenceRot += (left.rot - letter.rot) * couplingStrength * 0.3;
-        }
-        if (i < letters.length - 1) {
-          const right = letters[i + 1];
-          neighborInfluenceX += (right.x - letter.x) * couplingStrength;
-          neighborInfluenceY += (right.y - letter.y) * couplingStrength;
-          neighborInfluenceRot += (right.rot - letter.rot) * couplingStrength * 0.3;
-        }
-        
-        // Spring toward target + neighbor influence
-        const springK = 0.12;
-        const damping = 0.88;
-        
-        letter.vx += (letter.targetX - letter.x) * springK + neighborInfluenceX;
-        letter.vy += (letter.targetY - letter.y) * springK + neighborInfluenceY;
-        letter.vrot += (letter.targetRot - letter.rot) * springK + neighborInfluenceRot;
-        
-        letter.vx *= damping;
-        letter.vy *= damping;
-        letter.vrot *= damping;
-        
-        letter.x += letter.vx;
-        letter.y += letter.vy;
-        letter.rot += letter.vrot;
-        
-        // Flicker opacity
-        letter.opacity = 0.7 + Math.random() * 0.3;
-        
-      } else {
-        // Reset velocities on first frame of fall phase
-        if (!letter.inFallPhase) {
-          letter.inFallPhase = true;
-          letter.vx = 0;
-          letter.vy = 0;
-          letter.vrot = 0;
-          // Start fall from near zero
-          letter.x *= 0.3;
-          letter.y *= 0.3;
-          letter.rot *= 0.3;
-        }
-        // === FALL PHASE: crumble with clinging ===
-        const fallElapsed = letterElapsed - shakeDuration;
-        const fallProgress = Math.min(fallElapsed / fallDuration, 1);
-        
-        // Easing for fall (ease-out cubic)
-        const eased = 1 - Math.pow(1 - fallProgress, 3);
-        
-        let targetX, targetY, targetRot;
-        
-        if (letter.clingGroup && fallProgress < letter.clingGroup.breakTime) {
-          // Still clinging - move together with slight offset
-          const groupProgress = fallProgress / letter.clingGroup.breakTime;
-          targetX = letter.clingGroup.driftX * groupProgress * 0.5 + letter.clingIndex * 1.5;
-          targetY = letter.clingGroup.fallY * groupProgress * 0.3;
-          targetRot = letter.finalRot * groupProgress * 0.2;
-        } else {
-          // Broken free or solo - fall independently
-          let breakProgress = fallProgress;
-          if (letter.clingGroup) {
-            // Adjust progress to start from break point
-            breakProgress = (fallProgress - letter.clingGroup.breakTime) / (1 - letter.clingGroup.breakTime);
-            breakProgress = Math.max(0, breakProgress);
-          }
-          const breakEased = 1 - Math.pow(1 - breakProgress, 2);
-          
-          targetX = letter.driftX * eased;
-          targetY = letter.fallY * eased;
-          targetRot = letter.finalRot * breakEased;
-        }
-        
-        // Smooth transition
-        letter.x += (targetX - letter.x) * 0.15;
-        letter.y += (targetY - letter.y) * 0.15;
-        letter.rot += (targetRot - letter.rot) * 0.1;
-        
-        // Fade out with flicker
-        const fadeStart = 0.4;
-        if (fallProgress > fadeStart) {
-          const fadeProgress = (fallProgress - fadeStart) / (1 - fadeStart);
-          letter.opacity = (1 - fadeProgress) * (0.7 + Math.random() * 0.3);
-        }
-      }
-      
-      // Apply transform
-      letter.el.style.transform = `translate(${letter.x}px, ${letter.y}px) rotate(${letter.rot}deg)`;
-      letter.el.style.opacity = letter.opacity;
-    }
-    
-    requestAnimationFrame(animate);
-  }
-  
-  // Initial glimmer flash
-  container.style.textShadow = '0 0 40px rgba(255, 255, 255, 1), 0 0 80px rgba(255, 255, 255, 0.7)';
-  setTimeout(() => {
-    container.style.textShadow = '0 0 20px rgba(255, 255, 255, 0.5)';
-  }, 100);
-  
-  animate();
 }
 
 // Hello wiggle - simulates a brief voice-like distortion

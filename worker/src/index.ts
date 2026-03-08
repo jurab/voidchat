@@ -2,6 +2,8 @@ export interface Env {
   MATCHMAKER: DurableObjectNamespace;
   TURN_USERNAME: string;
   TURN_CREDENTIAL: string;
+  HOST_TOKEN: string;
+  HOST_NAME: string;
 }
 
 // Rate limit: max connections per IP per minute
@@ -31,19 +33,15 @@ export default {
     // TURN credentials endpoint
     if (url.pathname === "/turn-credentials") {
       // Minimal TURN config: UDP preferred, TLS/TCP fallback for strict firewalls
-      const iceServers = [
+      const iceServers: object[] = [
         { urls: 'stun:stun.relay.metered.ca:80' },
-        { 
-          urls: 'turn:global.relay.metered.ca:443',
-          username: env.TURN_USERNAME,
-          credential: env.TURN_CREDENTIAL
-        },
-        { 
-          urls: 'turns:global.relay.metered.ca:443?transport=tcp',
-          username: env.TURN_USERNAME,
-          credential: env.TURN_CREDENTIAL
-        },
       ];
+      if (env.TURN_USERNAME && env.TURN_CREDENTIAL) {
+        iceServers.push(
+          { urls: 'turn:global.relay.metered.ca:443', username: env.TURN_USERNAME, credential: env.TURN_CREDENTIAL },
+          { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: env.TURN_USERNAME, credential: env.TURN_CREDENTIAL },
+        );
+      }
       return new Response(JSON.stringify({ iceServers }), {
         headers: { 
           'Content-Type': 'application/json',
@@ -69,14 +67,17 @@ interface RateLimitEntry {
 
 export class Matchmaker {
   private state: DurableObjectState;
+  private env: Env;
   private connections: Map<string, WebSocket> = new Map();
   private userIps: Map<string, string> = new Map();
   private waiting: Set<string> = new Set();
   private pairs: Map<string, string> = new Map();
   private rateLimits: Map<string, RateLimitEntry> = new Map();
+  private hostUserId: string | null = null;
 
-  constructor(state: DurableObjectState) {
+  constructor(state: DurableObjectState, env: Env) {
     this.state = state;
+    this.env = env;
   }
 
   private log(shortId: string | null, message: string) {
@@ -148,6 +149,7 @@ export class Matchmaker {
     this.userIps.set(userId, clientIp);
 
     this.log(shortId, `Connected from ${clientIp}, total: ${this.connections.size}`);
+    this.broadcastStats();
 
     ws.addEventListener("message", (event) => {
       try {
@@ -190,6 +192,10 @@ export class Matchmaker {
         this.handleNext(userId, shortId);
         break;
 
+      case "auth":
+        this.handleAuth(userId, data, shortId);
+        break;
+
       case "leave":
         this.handleDisconnect(userId, shortId);
         break;
@@ -224,10 +230,12 @@ export class Matchmaker {
       // Notify both - the one who was waiting initiates
       this.send(partnerId, { type: "matched", initiator: true }, partnerShortId);
       this.send(userId, { type: "matched", initiator: false }, shortId);
+      this.broadcastStats();
     } else {
       // No one waiting, add to pool
       this.waiting.add(userId);
       this.send(userId, { type: "waiting" }, shortId);
+      this.broadcastStats();
     }
   }
 
@@ -253,8 +261,20 @@ export class Matchmaker {
     // Remove from waiting if there
     this.waiting.delete(userId);
 
-    // Rejoin the pool
+    // Rejoin the pool (handleJoin broadcasts stats on its own)
     this.handleJoin(userId, shortId);
+  }
+
+  private handleAuth(userId: string, data: { type: string; [key: string]: unknown }, shortId: string) {
+    if (data.token === this.env.HOST_TOKEN) {
+      this.hostUserId = userId;
+      this.log(shortId, `Authenticated as host`);
+      this.send(userId, { type: 'auth_ok' }, shortId);
+      this.broadcastStats();
+    } else {
+      this.log(shortId, `Auth failed`);
+      this.send(userId, { type: 'error', message: 'invalid_token' }, shortId);
+    }
   }
 
   private handleDisconnect(userId: string, shortId: string) {
@@ -269,6 +289,11 @@ export class Matchmaker {
     // Remove from waiting pool
     this.waiting.delete(userId);
 
+    // Clear host if this was the host
+    if (this.hostUserId === userId) {
+      this.hostUserId = null;
+    }
+
     // Clean up connection
     const ws = this.connections.get(userId);
     if (ws) {
@@ -282,6 +307,43 @@ export class Matchmaker {
     this.userIps.delete(userId);
 
     this.log(shortId, `Disconnected, total: ${this.connections.size}`);
+    this.broadcastStats();
+  }
+
+  private getHostStatus(): string {
+    if (!this.hostUserId || !this.connections.has(this.hostUserId)) {
+      return 'away';
+    }
+    if (this.pairs.has(this.hostUserId)) {
+      return 'busy';
+    }
+    if (this.waiting.has(this.hostUserId)) {
+      return 'online';
+    }
+    // Connected but hasn't joined yet
+    return 'away';
+  }
+
+  private broadcastStats() {
+    const hostStatus = this.getHostStatus();
+    const hostName = this.env.HOST_NAME || 'Host';
+    // Count active users (in waiting + in pairs)
+    const activeUserIds = new Set<string>();
+    for (const id of this.waiting) activeUserIds.add(id);
+    for (const id of this.pairs.keys()) activeUserIds.add(id);
+
+    for (const [recipientId, ws] of this.connections) {
+      // Online count excludes the recipient
+      let online = 0;
+      for (const id of activeUserIds) {
+        if (id !== recipientId) online++;
+      }
+      try {
+        ws.send(JSON.stringify({ type: 'stats', online, hostStatus, hostName }));
+      } catch {
+        // ignore
+      }
+    }
   }
 
   private send(userId: string, data: object, shortId: string) {

@@ -2,6 +2,9 @@ name = "voice-roulette-signaling"
 main = "src/index.ts"
 compatibility_date = "2024-12-18"
 
+[vars]
+HOST_NAME = "Jura"
+
 [observability]
 enabled = false
 head_sampling_rate = 1
