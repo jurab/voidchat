@@ -31,7 +31,7 @@ Sometimes you just want to talk to a stranger without the baggage of profiles, p
 - **Backend**: Cloudflare Workers with Durable Objects
 - **Hosting**: Cloudflare Pages + Workers (free tier)
 - **NAT traversal**: Google STUN servers + Metered.ca TURN relay fallback
-- **Font**: Hoefler Text Italic
+- **Font**: ADolphin Italic
 
 ## Features
 
